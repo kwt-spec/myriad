@@ -27,6 +27,10 @@ sealed interface Action {
     data class Equip(val item: ItemId) : Action
 
     @Serializable
+    @SerialName("camp")
+    data object Camp : Action
+
+    @Serializable
     @SerialName("quick_strike")
     data object QuickStrike : Action
 

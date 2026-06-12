@@ -109,6 +109,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 action = action,
                 label = when (action) {
                     Action.Look -> "Look around"
+                    Action.Camp -> "Camp"
                     Action.Search -> "Search"
                     Action.QuickStrike -> "Quick strike"
                     Action.HeavyStrike -> "Heavy strike"

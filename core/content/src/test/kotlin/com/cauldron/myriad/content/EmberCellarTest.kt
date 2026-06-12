@@ -34,7 +34,9 @@ class EmberCellarTest {
 
     @Test
     fun `pack constructs, which means every linter passed`() {
-        assertEquals("ember-cellar/0.2", EmberCellar.pack.version)
+        assertEquals("ember-cellar/0.3", EmberCellar.pack.version)
+        assertTrue(EmberCellar.WARMTH in EmberCellar.pack.meters, "the survival era has its meter")
+        assertTrue(EmberCellar.pack.rooms.getValue(EmberCellar.ASHEN_CELLAR).haven, "the cellar is the haven")
         assertEquals(EmberCellar.ASHEN_CELLAR, EmberCellar.pack.startRoom)
         assertTrue(EmberCellar.pack.rooms.getValue(EmberCellar.CELLAR_STAIR).isGoal)
         assertTrue(EmberCellar.COLLAPSED_VAULT in EmberCellar.pack.rooms, "the vault exists")

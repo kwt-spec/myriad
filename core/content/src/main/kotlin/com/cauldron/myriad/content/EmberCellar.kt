@@ -4,6 +4,8 @@ import com.cauldron.myriad.engine.model.ContentPack
 import com.cauldron.myriad.engine.model.ExitDef
 import com.cauldron.myriad.engine.model.ItemDef
 import com.cauldron.myriad.engine.model.ItemId
+import com.cauldron.myriad.engine.model.MeterDef
+import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.MonsterDef
 import com.cauldron.myriad.engine.model.MonsterId
 import com.cauldron.myriad.engine.model.MoveDef
@@ -33,8 +35,10 @@ object EmberCellar {
     val WISP_FLICKER = MoveId("wisp_flicker")
     val WISP_SCORCH = MoveId("wisp_scorch")
 
+    val WARMTH = MeterId("warmth")
+
     val pack = ContentPack(
-        version = "ember-cellar/0.2",
+        version = "ember-cellar/0.3",
         intro = "Cold ash sifts down from the beams overhead. You wake on cracked flagstones " +
             "with no memory of the stairs that brought you down — only a seam of dim ember-light " +
             "somewhere above, and the certainty that the dark below is not empty.",
@@ -49,6 +53,9 @@ object EmberCellar {
                 hiddenItem = RUSTY_SWORD,
                 searchText = "You drag your fingers through the drifts and strike metal: " +
                     "a rusty sword, pitted but still keen enough to bite.",
+                haven = true,
+                campText = "You bank the loose embers among the broken casks and huddle close. " +
+                    "Warmth seeps back into your hands, and the dark feels survivable again.",
             ),
             ROOT_PASSAGE to RoomDef(
                 id = ROOT_PASSAGE,
@@ -138,6 +145,17 @@ object EmberCellar {
                     ),
                 ),
                 goldDrop = 1..3,
+            ),
+        ),
+        meters = mapOf(
+            WARMTH to MeterDef(
+                id = WARMTH,
+                name = "warmth",
+                glyph = "🔥",
+                cap = 20,
+                start = 20,
+                burnPerAction = 1,
+                emptyDamagePerAction = 1,
             ),
         ),
     )

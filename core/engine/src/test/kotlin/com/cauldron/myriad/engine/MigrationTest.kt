@@ -64,6 +64,30 @@ class MigrationTest {
     }
 
     @Test
+    fun `v2 exploring fixture chains to current and plays on`() {
+        val save = SaveCodec.decode(golden("v2-exploring.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, save.formatVersion, "v2 must chain 2→3")
+        assertIs<Mode.Exploring>(save.state.mode)
+        assertEquals(TestWorlds.SWORD, save.state.player.equipped, "fixture was armed")
+        assertTrue(save.state.meters.isEmpty(), "meters arrive empty; meterFor seeds reads")
+        engine.step(save.state, com.cauldron.myriad.engine.model.Action.Look)
+    }
+
+    @Test
+    fun `v2 mid-combat fixture resumes with its real telegraph and brace intact`() {
+        val save = SaveCodec.decode(golden("v2-combat.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, save.formatVersion)
+        val mode = assertIs<Mode.Combat>(save.state.mode)
+        assertTrue(mode.monsterIntent.value.isNotEmpty(), "v2 saves carry a real drawn intent, not the sentinel")
+        assertTrue(mode.braced, "the fixture braced and the rat hadn't struck yet")
+        assertEquals(Mode.Combat.GAUGE_MAX, mode.playerGauge)
+        assertTrue(mode.monsterGauge in 1 until Mode.Combat.GAUGE_MAX, "monster gauge mid-charge")
+
+        val finished = fightSmart(engine, save.state)
+        assertTrue(finished.mode is Mode.Exploring || finished.mode is Mode.Dead)
+    }
+
+    @Test
     fun `v2 saves pass through migration unchanged`() {
         val state = engine.newGame(11, "Hero")
         val save = SaveCodec.fresh(state)

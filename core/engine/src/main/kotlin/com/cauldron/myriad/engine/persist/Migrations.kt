@@ -8,15 +8,19 @@ package com.cauldron.myriad.engine.persist
 object Migrations {
 
     /**
-     * v1 → v2 (M1a, tick-ATB combat): `Mode.Combat` gained gauge/stamina/
-     * intent/braced fields. The lenient CBOR decode already fills them with
-     * ready-to-act defaults (player gauge full, monster gauge empty, full
-     * stamina, unbraced) and a sentinel intent the engine resolves to the
-     * monster's first move. Nothing else changed shape, so the migration is
-     * just the version stamp.
+     * Chain: each released version steps to the next, recursively, so a v1 save
+     * walks 1→2→3→…
+     *
+     * v1 → v2 (M1a, tick-ATB): `Mode.Combat` gained gauge/stamina/intent/braced;
+     * lenient CBOR decode fills ready-to-act defaults, the engine resolves the
+     * sentinel intent to the monster's first move.
+     *
+     * v2 → v3 (M1b, meters): `GameState.meters` added; defaults to empty and
+     * `meterFor` seeds reads at each meter's start value, so the stamp suffices.
      */
     fun migrate(save: SaveFile): SaveFile = when (save.formatVersion) {
-        1 -> save.copy(formatVersion = 2)
+        1 -> migrate(save.copy(formatVersion = 2))
+        2 -> migrate(save.copy(formatVersion = 3))
         SaveCodec.FORMAT_VERSION -> save
         else -> throw SaveCodec.CorruptSaveException(
             "no migration path from save format ${save.formatVersion}"

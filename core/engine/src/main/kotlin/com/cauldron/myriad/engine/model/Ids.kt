@@ -17,3 +17,7 @@ value class MonsterId(val value: String)
 @Serializable
 @JvmInline
 value class MoveId(val value: String)
+
+@Serializable
+@JvmInline
+value class MeterId(val value: String)

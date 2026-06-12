@@ -6,6 +6,8 @@ import com.cauldron.myriad.engine.model.ExitDef
 import com.cauldron.myriad.engine.model.GameState
 import com.cauldron.myriad.engine.model.ItemDef
 import com.cauldron.myriad.engine.model.ItemId
+import com.cauldron.myriad.engine.model.MeterDef
+import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.Mode
 import com.cauldron.myriad.engine.model.MonsterDef
 import com.cauldron.myriad.engine.model.MonsterId
@@ -33,6 +35,11 @@ object TestWorlds {
         MoveDef(BURST, "burst", "Heat rolls off it in waves.", powerNum = 16, powerDen = 10, weight = 2),
     )
 
+    val WARMTH = MeterId("warmth")
+
+    fun warmthMeter(cap: Int = 6, burn: Int = 1, emptyDamage: Int = 2): Map<MeterId, MeterDef> =
+        mapOf(WARMTH to MeterDef(WARMTH, "warmth", "🔥", cap = cap, start = cap, burnPerAction = burn, emptyDamagePerAction = emptyDamage))
+
     /** Mirrors the Ember Cellar topology: start (hidden sword) → monster room → goal. */
     fun cellarLike(
         ratAttack: Int = 3,
@@ -41,6 +48,8 @@ object TestWorlds {
         ratSpeed: Int = 80,
         moves: List<MoveDef> = ratMoves(),
         goldDrop: IntRange = 2..6,
+        meters: Map<MeterId, MeterDef> = emptyMap(),
+        havenStart: Boolean = meters.isNotEmpty(),
     ): ContentPack = ContentPack(
         version = "test/1",
         intro = "Test intro.",
@@ -50,6 +59,8 @@ object TestWorlds {
                 id = CELLAR, name = "Cellar", description = "A test cellar.",
                 exits = listOf(ExitDef("north", PASSAGE)),
                 hiddenItem = SWORD,
+                haven = havenStart,
+                campText = if (havenStart) "You huddle by the test embers." else null,
             ),
             PASSAGE to RoomDef(
                 id = PASSAGE, name = "Passage", description = "A test passage.",
@@ -70,7 +81,12 @@ object TestWorlds {
                 speed = ratSpeed, moves = moves, goldDrop = goldDrop,
             ),
         ),
+        meters = meters,
     )
+
+    /** Cellar with a short-fuse warmth meter — the survival-clock test world. */
+    fun frostbitten(cap: Int = 6, burn: Int = 1, emptyDamage: Int = 2): ContentPack =
+        cellarLike(meters = warmthMeter(cap, burn, emptyDamage))
 
     /** A fast, durable, gentle foe — for proving multi-act-per-player-turn. */
     fun fastFoe(speed: Int = 240, hp: Int = 60, attack: Int = 1): ContentPack =

@@ -91,6 +91,18 @@ sealed interface Event {
     @SerialName("equipped")
     data class Equipped(val item: ItemId) : Event
 
+    /**
+     * Survival clock advanced (Ember-age game-time: per action). Carries the
+     * post-burn meter values and any attrition damage so reduce stays pure.
+     */
+    @Serializable
+    @SerialName("meters_ticked")
+    data class MetersTicked(val values: Map<MeterId, Int>, val chillDamage: Int) : Event
+
+    @Serializable
+    @SerialName("camped")
+    data class Camped(val restored: Map<MeterId, Int>) : Event
+
     @Serializable
     @SerialName("game_won")
     data object GameWon : Event

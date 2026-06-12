@@ -88,6 +88,8 @@ data class GameState(
     val mode: Mode,
     val feed: List<FeedEntry> = emptyList(),
     val nextFeedId: Long = 0,
+    /** Survival meter values; default keeps pre-v3 saves decoding (meterFor seeds reads). */
+    val meters: Map<MeterId, Int> = emptyMap(),
 ) {
     companion object {
         const val FEED_LIMIT = 500
@@ -103,6 +105,10 @@ fun GameState.roomStateFor(id: RoomId, content: ContentPack): RoomState =
     rooms[id] ?: RoomState(
         monsterHp = content.rooms.getValue(id).monster?.let { content.monsters.getValue(it).maxHp }
     )
+
+/** Same tolerance for meters: saves predating a meter read it at its start value. */
+fun GameState.meterFor(id: MeterId, content: ContentPack): Int =
+    meters[id] ?: content.meters.getValue(id).start
 
 /** Append narration, assigning monotonic ids and trimming to FEED_LIMIT. */
 fun GameState.appendFeed(entries: List<Pair<FeedKind, String>>): GameState {

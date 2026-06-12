@@ -39,6 +39,8 @@ object Narrator {
         Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
         is Event.MonsterIntentDrawn, is Event.CombatTicked -> FeedKind.COMBAT
         is Event.ItemFound, is Event.ItemTaken, is Event.Equipped -> FeedKind.LOOT
+        is Event.Camped -> FeedKind.NARRATION
+        is Event.MetersTicked -> FeedKind.SYSTEM
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
     }
 
@@ -110,6 +112,24 @@ object Narrator {
                 if (def.defenseBonus != 0) add("+${def.defenseBonus} defense")
             }.joinToString(", ")
             "You ready the ${def.name}${if (bonuses.isEmpty()) "" else " ($bonuses)"}."
+        }
+
+        is Event.MetersTicked -> buildList {
+            for ((meterId, value) in event.values) {
+                val def = content.meters[meterId] ?: continue
+                when {
+                    value == def.cap / 2 -> add("${def.glyph} Your ${def.name} is fading — ${value}/${def.cap}.")
+                    value == 2 -> add("${def.glyph} Your ${def.name} is nearly spent.")
+                }
+            }
+            if (event.chillDamage > 0) {
+                add("The chill of the deep places bites — ${event.chillDamage}.")
+            }
+        }.joinToString("\n")
+
+        is Event.Camped -> {
+            val room = content.rooms.getValue(state.currentRoom)
+            room.campText ?: "You rest a while in safety; your strength of purpose returns."
         }
 
         Event.GameWon ->

@@ -39,6 +39,22 @@ data class MonsterDef(
 
 data class ExitDef(val label: String, val to: RoomId)
 
+/**
+ * A survival meter on the Ember-age game-time clock (MASTER_PLAN §16.10):
+ * burns per action taken; while empty, each action costs hp. Real-time clocks
+ * (Soot/Neon ages) extend this framework at M2+ — same defs, different regen
+ * source.
+ */
+data class MeterDef(
+    val id: MeterId,
+    val name: String,
+    val glyph: String,
+    val cap: Int,
+    val start: Int,
+    val burnPerAction: Int,
+    val emptyDamagePerAction: Int,
+)
+
 data class RoomDef(
     val id: RoomId,
     val name: String,
@@ -47,6 +63,9 @@ data class RoomDef(
     val monster: MonsterId? = null,
     val hiddenItem: ItemId? = null,
     val searchText: String? = null,
+    /** Camp is legal here: restores all meters to cap. */
+    val haven: Boolean = false,
+    val campText: String? = null,
     val isGoal: Boolean = false,
 )
 
@@ -64,6 +83,7 @@ data class ContentPack(
     val rooms: Map<RoomId, RoomDef>,
     val items: Map<ItemId, ItemDef>,
     val monsters: Map<MonsterId, MonsterDef>,
+    val meters: Map<MeterId, MeterDef> = emptyMap(),
 ) {
     companion object {
         const val GOLD_DROP_CAP = 1_000_000
@@ -113,6 +133,17 @@ data class ContentPack(
             if (monster.moves.sumOf { it.weight.toLong() } > 1_000_000L) {
                 problems += "monster '${monster.id.value}': move weights sum too large"
             }
+        }
+
+        for (meter in meters.values) {
+            if (meter.cap <= 0) problems += "meter '${meter.id.value}': cap must be positive"
+            if (meter.start !in 0..meter.cap) problems += "meter '${meter.id.value}': start outside 0..cap"
+            if (meter.burnPerAction < 0) problems += "meter '${meter.id.value}': negative burn"
+            if (meter.emptyDamagePerAction < 0) problems += "meter '${meter.id.value}': negative empty damage"
+            if (meter.name.isBlank() || meter.glyph.isBlank()) problems += "meter '${meter.id.value}': blank name or glyph"
+        }
+        if (meters.isNotEmpty() && rooms.values.none { it.haven }) {
+            problems += "meters exist but no haven room to camp in — guaranteed death by attrition"
         }
 
         // Reachability from the start room (BFS over exits).

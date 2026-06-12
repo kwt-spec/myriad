@@ -48,6 +48,7 @@ import com.cauldron.myriad.engine.model.FeedEntry
 import com.cauldron.myriad.engine.model.FeedKind
 import com.cauldron.myriad.engine.model.GameState
 import com.cauldron.myriad.engine.model.Mode
+import com.cauldron.myriad.engine.model.meterFor
 import kotlinx.coroutines.delay
 
 private val CombatText = Color(0xFFE0916B)
@@ -156,6 +157,15 @@ private fun StatusStrip(game: GameState, content: ContentPack) {
             style = style,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        for ((meterId, def) in content.meters) {
+            val value = game.meterFor(meterId, content)
+            val lowMeter = value <= def.cap / 4
+            Text(
+                text = "${def.glyph}$value",
+                style = style,
+                color = if (lowMeter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text(
             text = content.rooms.getValue(game.currentRoom).name,
             style = style,

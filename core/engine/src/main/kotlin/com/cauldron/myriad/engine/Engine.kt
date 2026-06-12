@@ -12,7 +12,9 @@ import com.cauldron.myriad.engine.model.MoveId
 import com.cauldron.myriad.engine.model.PlayerState
 import com.cauldron.myriad.engine.model.RoomId
 import com.cauldron.myriad.engine.model.RoomState
+import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.appendFeed
+import com.cauldron.myriad.engine.model.meterFor
 import com.cauldron.myriad.engine.model.roomStateFor
 import com.cauldron.myriad.engine.rng.Dice
 import com.cauldron.myriad.engine.rng.RngState
@@ -55,6 +57,7 @@ class Engine(val content: ContentPack) {
             currentRoom = content.startRoom,
             rooms = rooms,
             mode = Mode.Exploring,
+            meters = content.meters.mapValues { (_, def) -> def.start },
         )
         return state.appendFeed(
             listOf(
@@ -83,6 +86,7 @@ class Engine(val content: ContentPack) {
             add(Action.Look)
             val room = content.rooms.getValue(state.currentRoom)
             val roomState = state.roomStateFor(state.currentRoom, content)
+            if (room.haven && content.meters.isNotEmpty()) add(Action.Camp)
             if (room.hiddenItem != null && !roomState.searched) add(Action.Search)
             for (item in roomState.itemsOnFloor) add(Action.Take(item))
             for (item in state.player.inventory) {
@@ -99,7 +103,9 @@ class Engine(val content: ContentPack) {
             "Illegal action $action in mode ${state.mode} at ${state.currentRoom.value}"
         }
         val dice = Dice(state.rng)
-        val events = resolve(state, action, dice)
+        val actionEvents = resolve(state, action, dice)
+        val runEnded = actionEvents.any { it is Event.PlayerDied || it is Event.GameWon }
+        val events = if (runEnded) actionEvents else actionEvents + survivalTick(state, action, actionEvents)
         var next = state.copy(rng = dice.snapshot(), turn = state.turn + 1)
         for (event in events) next = reduce(next, event)
         val feedEntries = events.mapNotNull { event ->
@@ -120,6 +126,10 @@ class Engine(val content: ContentPack) {
             val room = content.rooms.getValue(state.currentRoom)
             listOf(Event.ItemFound(checkNotNull(room.hiddenItem)))
         }
+
+        Action.Camp -> listOf(
+            Event.Camped(content.meters.mapValues { (_, def) -> def.cap })
+        )
 
         is Action.Take -> listOf(Event.ItemTaken(action.item))
 
@@ -145,6 +155,36 @@ class Engine(val content: ContentPack) {
         Action.HeavyStrike -> resolveCombat(state, dice, CombatChoice.HEAVY)
         Action.Brace -> resolveCombat(state, dice, CombatChoice.BRACE)
         Action.Flee -> resolveCombat(state, dice, CombatChoice.FLEE)
+    }
+
+    /**
+     * The Ember-age survival clock: every action burns the meters; empty meters
+     * draw blood. Camp is restful — it restores instead of burning. Pure math,
+     * no dice; appended after the action's own events. If those events already
+     * ended the run (death/victory), time does not get a second bite.
+     */
+    private fun survivalTick(state: GameState, action: Action, actionEvents: List<Event>): List<Event> {
+        if (content.meters.isEmpty()) return emptyList()
+        if (action == Action.Camp) return emptyList() // Camped restores; no burn while resting
+
+        val values = mutableMapOf<MeterId, Int>()
+        var chill = 0L
+        for (def in content.meters.values) {
+            val burned = (state.meterFor(def.id, content) - def.burnPerAction).coerceAtLeast(0)
+            values[def.id] = burned
+            if (burned == 0) chill += def.emptyDamagePerAction
+        }
+        if (values.isEmpty()) return emptyList()
+
+        val damage = chill.coerceAtMost(DAMAGE_CAP.toLong()).toInt()
+        // Cold death must respect wounds already taken this turn, or hp could
+        // floor at zero while the mode stays Combat.
+        val hpAfterAction = state.player.hp.toLong() -
+            actionEvents.filterIsInstance<Event.MonsterStruckPlayer>().sumOf { it.damage.toLong() }
+        return buildList {
+            add(Event.MetersTicked(values, damage))
+            if (damage > 0 && hpAfterAction - damage <= 0) add(Event.PlayerDied)
+        }
     }
 
     private enum class CombatChoice { QUICK, HEAVY, BRACE, FLEE }
@@ -306,6 +346,13 @@ class Engine(val content: ContentPack) {
                 )
             } else state
         }
+
+        is Event.MetersTicked -> state.copy(
+            meters = state.meters + event.values,
+            player = state.player.copy(hp = (state.player.hp - event.chillDamage).coerceAtLeast(0)),
+        )
+
+        is Event.Camped -> state.copy(meters = state.meters + event.restored)
 
         Event.PlayerDied -> state.copy(mode = Mode.Dead)
 
