@@ -110,7 +110,8 @@ Tiers: **[CORE]** in v1 · **[NEXT]** first expansions · **[SOMEDAY]** parked �
 - [SOMEDAY] Seasonal challenge seeds shared as text strings.
 
 ### Combat
-- [CORE] Turn-based, initiative, action-point economy; front/back ranks (positioning abstracted to two rows — readable in text); stances; status-effect matrix with stated stacking rules; elemental interactions beyond rock-paper-scissors (e.g., wet+lightning, oil+fire); armor as typed mitigation; flee and **negotiate/intimidate as combat verbs**; morale (enemies rout, beg, betray); boss phases with telegraphed tells in prose; visible hit/damage odds (respect the player's brain — this is a text game, numbers are the graphics).
+- [CORE — SHIPPED M1a, replaces the original turn-based design after playtest feedback] **Tick-ATB, pause-on-ready**: deterministic integer gauges (player 100/tick, monster speed from content) on a visible timeline; the world waits when your gauge fills; monsters **telegraph their next move** (⚠ line) and execute it when their gauge wraps — fast foes act multiple times against heavy swings. Strike menu: Quick (light, fast return, cheap stamina) / Heavy (1.6×, crits on 5–6, slow return, dear stamina) / Brace (halves the next hit, persists until consumed, restores stamina — always legal, preserving the softlock oracle) / Flee. All bookkeeping syncs via a `CombatTicked` event so reduce alone reconstructs state.
+- [CORE later] front/back ranks; status-effect matrix with stated stacking rules; elemental interactions beyond rock-paper-scissors (wet+lightning, oil+fire); armor as typed mitigation; **negotiate/intimidate as combat verbs**; morale (enemies rout, beg, betray); boss phases; visible hit/damage odds.
 - [NEXT] Weapon movesets/combos; environmental hazards from encounter templates; companion combat AI orders.
 - [REJECT] Real-time anything; QTEs (pillar 3 — one-handed, interruptible).
 
@@ -186,6 +187,17 @@ You've already shipped Claude vision integration in Rogue; this is the same musc
 ### Screen inventory
 Title/continue · Character forge · **Main feed** (the game) · Status strip (HP/MP/gold/game-time, pinned) · Verb chips + context actions · Optional command line · Character sheet · Inventory (sort/filter/compare) · Equipment · Map · Quest journal · Codex/bestiary · Crafting bench · Shop · Dialogue view · Save manager · Settings · Achievements · Statistics · Death/epilogue · Seeded-run setup.
 
+### The Living Dark (M1a — supersedes "pure text page")
+Playtest feedback ("a dead text page in your face") overrode §14 default 6. The
+presentation is now **text + procedural life**: an `EmberField` of ~36 drifting
+particles behind everything (draw-phase-only invalidation, parks with the
+choreographer when backgrounded); a `CombatScene` HUD in fights (enemy panel with
+animated HP bar, pulsing ⚠ telegraph, you/foe ATB timeline lanes, flying damage
+popups, crit screen-shake, hit flashes, haptics); kinetic feed (entries breathe in
+over 250 ms); animated status strip (HP counts down, low-HP heartbeat, gold rolls).
+Chips sleep ~620 ms during the timeline sweep — the pause-on-ready feel.
+Bundled illustration packs (curated per Age) land at M3+ as content, not code.
+
 ### The feed (where the game lives)
 - `LazyColumn`, **windowed history**: in-memory ring of ~500 entries; older history pages in from DB on scroll. An unbounded scrollback is the text-game OOM/jank blindside — capped by design.
 - Cached `AnnotatedString` per entry, stable keys, immutable models. Zero recomposition in steady state (verify with Layout Inspector recomposition counts).
@@ -226,6 +238,8 @@ Title/continue · Character forge · **Main feed** (the game) · Status strip (H
 | Battery | < 4%/h reading, < 8%/h AI streaming | on-device soak ritual |
 
 Techniques: R8 full mode, Baseline Profiles, cached text layout, stable keys, `derivedStateOf` discipline, no always-on animations, DB indices + FTS, compressed content blobs, bitmap-free UI.
+
+**Ambient exception (M1a):** the EmberField and combat-scene pulses are deliberate, measured always-on animations — single Canvas, time-pure particles, zero per-frame recomposition or allocation, suspended off-screen. Settings kill-switch ships at M1b; the battery budget line above is the tripwire.
 
 ---
 
@@ -318,7 +332,8 @@ Authoring throughput is the real "biggest ever" bottleneck, so the pipeline is a
 | Milestone | Scope | Exit criteria (binding) |
 |---|---|---|
 | **M0 — Skeleton** (1–2 wk) | Modules, engine core (state/events/RNG/save), 1 room, 1 fight, feed UI, autosave | `adb shell am kill` mid-combat on the B2 Ultra → invisible resume. Save roundtrip property test green. |
-| **M1 — Vertical slice** (3–4 wk) | One zone, 3 classes, 20 items, full combat, 5 quests (1 branching), Forge v1 + 3 linters, Gauntlet v0 | 2 hours of *actual fun* on device; 1k bot runs with zero crash/softlock; all §7 startup budgets green |
+| **M1a — Living Combat** ✅ 2026-06-12 | Tick-ATB engine (gauges, telegraphs, stamina, multi-act foes), save format v2 + migrations + golden corpus (incl. real device save), CombatScene HUD, EmberField, kinetic feed, ember wisp + Collapsed Vault | All suites green; Gauntlet 1k: 0 crashes/softlocks (88.2% random-bot wins — accepted above the 30–70 band: tutorial room should be survivable; rat speed is the tuning lever); device proof of mid-combat process-death resume |
+| **M1b — Vertical slice** (3–4 wk) | One zone deep, 3 classes, 20 items, 5 quests (1 branching), **Forge v1 (storylet/quality format)** + 3 linters, Meter framework (per-Age clocks), settings screen (ambient/haptics toggles), unfolding-tab seed | 2 hours of *actual fun* on device; 1k bot runs zero crash/softlock; all §7 startup budgets green |
 | **M2 — Systems complete** (4–6 wk) | All [CORE] systems, migrations live, TTS mode, full release gate passing | Release-gate checklist 100%; first golden save archived |
 | **M3 — Content scale-out** (ongoing) | Region-by-region; radiant generator; cadence | Weekly Gauntlet balance report; word-count dashboard trending to targets |
 | **M4 — AI-GM alpha** | T0→T3 ladder, budget meter, caching | Airplane-mode parity; cost within budget over a 10 h campaign |
@@ -335,7 +350,7 @@ Weekly ritual regardless of milestone: Sunday play session on the B2 Ultra, issu
 3. **Ship order** — default: offline-first, AI at M4.
 4. **Distribution** — default: personal sideload; Play Store re-evaluated at M5.
 5. **Permadeath** — default off, toggle at creation.
-6. **Presentation** — pure text + Unicode glyphs, zero images (the cheapest "biggest").
+6. ~~**Presentation** — pure text + Unicode glyphs, zero images~~ **OVERRIDDEN by playtest (2026-06-12):** text + procedural visual life (the Living Dark, §6) now; curated illustration packs per Age at M3+. Cosmetics/skins remain narration-layer (§16).
 
 ---
 
@@ -356,18 +371,28 @@ separate planets. You descend/ascend between them through Gates (the slow-burn s
 Each Age is a content-pack cluster with its own item families, monsters, factions,
 idioms, and *tech-as-magic register* — the engine is era-agnostic by design.
 
-| # | Age | Register | Example flavor |
+**Each Age is a different RPG** (Kaelen's directive, 2026-06-12): eras differ in
+*kind*, not costume — its own dominant loop, meters, verbs, tabs, and way to live.
+The unifier: *every Age teaches a new way to live, and nothing you master is
+wasted* — verbs, skills, and contacts carry forward.
+
+| # | Age | Register | **Plays as** |
 |---|---|---|---|
-| I | **Ember Age** | dark fantasy (current start) | the cellar, ash, scavenged heat |
-| II | Primordial | myth-time | titan bones, first-words magic |
-| III | Bronze | ancient empires | chariot lords, oracle politics |
-| IV | Feudal | high medieval | castles, guilds, crusading orders |
-| V | Gilded | renaissance / age of sail | cannon brigs, printing-press heresies |
-| VI | Soot | industrial / steam | mill barons, boiler golems |
-| VII | Neon | modern / noir-arcane | pact lawyers, gun-and-grimoire |
-| VIII | Chrome | near-future | augments, corporate liches |
-| IX | Static | far-future / post-human | machine choirs, uploaded gods |
-| X | The Hush | outside time (endgame) | where all Ages bleed together |
+| I | **Ember Age** | dark fantasy (current start) | **survival RPG** — hunger/warmth/light meters, scavenge, camp, ration |
+| II | Primordial | myth-time | hunt-and-tribe — beast taming, totems, migrations |
+| III | Bronze | ancient empires | warband & tribute — raids, oaths, levies |
+| IV | Feudal | high medieval | classic questing RPG — guilds, dungeons, chivalry |
+| V | Gilded | renaissance / age of sail | merchant explorer — routes, cargo, compounding trade |
+| VI | Soot | industrial / steam | **labor life-sim: the factory era** — shifts, quotas, wages, rent, foreman ladder, union-vs-baron politics |
+| VII | Neon | modern / noir-arcane | crime RPG — nerve meter, crime ladder, heat, jail/hospital as timed states |
+| VIII | Chrome | near-future | **the Manager era** — run a company/crew of NPCs and unlocked Vessels: hire, assign, contracts, payroll |
+| IX | Static | far-future / post-human | automation & ascension — delegate everything you once did by hand |
+| X | The Hush | outside time (endgame) | roguelike anthology — runs remixing every verb set you've learned |
+
+A genre = a **systems package** (verb set + meter set + tab set + content
+register) behind the unchanged Action→Event→reduce core. One generic **Meter
+framework** (id, cap, regen source, sinks) powers hunger (I), shift-stamina (VI),
+nerve (VII) — see 16.11 for its clocks.
 
 Rules: every Age ships as its own pack cluster (validated by the Forge like any content);
 items/monsters/factions are Age-tagged; Gates unlock by spine progress, making pacing a
@@ -477,7 +502,34 @@ collections (bestiary %, wardrobe %, stable %, codex %) ≈ 50–100 h · seeded
 runs and NG+ remix flags beyond that. Pacing dials live in content (XP curves, gate
 costs), tuned by Gauntlet long-run sims — never by invisible grind multipliers.
 
-### 16.9 What this expansion does NOT change
+### 16.9 Genre research — what the Torn family teaches Myriad
+
+| Game | Steal | Skip |
+|---|---|---|
+| **Torn** | meter-driven check-in cadence; jobs/promotion ladders; crime ladder; multi-day education courses granting permanent perks; jail/hospital as timed states; dozens of small interlocking loops (stocks, properties, races) as tab content | MMO/PvP, player economy, paid refills |
+| **Fallen London** | **storylets + qualities as the Forge's native format** — every player-fact a "quality," every piece of content a self-contained storylet gated by and changing qualities; proven past a million words | real-money candle refills |
+| **Kingdom of Loathing** | **ascension** — prestige runs with permanent skill carryover (formalizes the Hush age); familiars≈pets; crafting combinatorics as an item-count engine; seasonal content | daily-turn caps as the only pacing |
+| **A Dark Room** | **the genre-shift proof** (survival → village manager → map roguelike); the **unfolding UI** — tabs appear as systems unlock, withholding as drama | terminal-minimalism (we chose the Living Dark) |
+| **Melvor Idle** | mobile-proven **skill-grid**: 20+ skills, each a tab with its own loop + mastery; offline progression done right — commercial proof of the tab roster | pure-idle combat |
+| **King of Dragon Pass** | **management by event-cards with advisors** — opinionated (sometimes wrong) counsel on dilemmas: the Chrome Manager / Soot union-politics pattern; advisors = Vessel cameos | — |
+| **NationStates / BitLife / Urban Dead / LoGD** | daily dilemma generator (templates + qualities = cadence without authoring burnout); life-ledger biography; AP-scarcity planning (Ember); daily rhythm | nation-sim scope; real-person content |
+
+Architectural adoptions: (1) storylets/qualities become the Forge format — our
+flags were qualities in embryo, the validators map 1:1; (2) the TabRegistry
+follows the **unfolding-UI principle** — the game starts tiny and grows in your
+hands; (3) **ascension** is the Hush age's formal mechanic.
+
+### 16.10 Meter clocks — DECIDED (per-Age mix, confirmed twice 2026-06-12)
+
+Each Age declares its own clock in the Meter framework: survival **Ember =
+game-time** (meters burn per action; zero pressure while the app is closed);
+life-sim Ages (**Soot, Neon**, similar) = **real-time** — wall-clock regen
+anchored to `elapsedRealtime`, ~16 h offline accrual cap so absence never
+trivializes, clock-change forgiveness, refills journaled as events at app-open
+so determinism and replay hold. Combat and story stay action-driven game-time
+in every Age. Engineering lands with the Meter framework at M1b+.
+
+### 16.11 What this expansion does NOT change
 
 The pillars (§0), the v1 cut (one Age, deep), the engine invariants (§3, §9), the save
 discipline (§8), and the tier system: every idea above enters §4's tiers as [NEXT] or

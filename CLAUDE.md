@@ -24,7 +24,17 @@ architecture, scope tiers, and the risk register — update it when decisions ch
   `SaveCodec.FORMAT_VERSION` on any `GameState` shape change and add a migration +
   golden save fixture (corpus starts at M2).
 - `legalActions` empty ⇔ terminal mode — the Gauntlet's softlock oracle depends on it.
+  In combat, Brace and Flee are always legal (no stamina cost) — keep it that way.
+- Combat is tick-ATB (M1a): constants in `Engine` companion (GAUGE_MAX 1000, player
+  speed 100, recoveries/stamina costs). Monster intents are telegraphed one move
+  ahead and serialized in `Mode.Combat`. A final `CombatTicked` event syncs all ATB
+  bookkeeping — reduce alone must reconstruct state. `moveFor` resolves missing/
+  sentinel move ids to the monster's first move (tombstone-safe).
+- `roomStateFor` (not `rooms.getValue`) for room state — old saves lack rooms added
+  by newer content packs; it seeds them on demand.
 - Content IDs are never deleted, only tombstoned.
+- Golden saves live in `src/test/resources/golden/` — never regenerate or edit
+  committed fixtures; add new ones per released format version.
 
 ## Device target
 B2 Ultra: Android 15, OXO OS (aggressive process killer — autosave every turn,

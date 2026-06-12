@@ -14,10 +14,8 @@ class EngineFlowTest {
     private val engine = Engine(TestWorlds.cellarLike())
 
     @Test
-    fun `scripted run wins for every seed once armed`() {
-        // With the sword (atk 4 vs def 1, min damage 4) the rat (8 hp) dies in at
-        // most two rounds, so the player absorbs at most one strike (max 16 < 20 hp).
-        // Death is arithmetically impossible — this must win for ALL seeds.
+    fun `telegraph-aware fighter survives the armed rat for every seed`() {
+        var wins = 0
         for (seed in 1L..50L) {
             var state = engine.newGame(seed, "Hero")
             state = engine.step(state, Action.Search).state
@@ -28,20 +26,29 @@ class EngineFlowTest {
             state = engine.step(state, Action.Move(TestWorlds.PASSAGE)).state
             assertIs<Mode.Combat>(state.mode, "seed $seed: combat should start")
 
-            var rounds = 0
-            while (state.mode is Mode.Combat) {
-                state = engine.step(state, Action.Attack).state
-                rounds++
-                assertTrue(rounds <= 3, "seed $seed: rat survived $rounds rounds")
-            }
-            assertIs<Mode.Exploring>(state.mode, "seed $seed: player should survive")
-            assertTrue(state.player.hp > 0, "seed $seed: hp ${state.player.hp}")
+            state = fightSmart(engine, state)
+            assertIs<Mode.Exploring>(state.mode, "seed $seed: smart fighter should win, hp=${state.player.hp}")
+            assertTrue(state.player.hp > 0, "seed $seed")
             assertTrue(state.player.gold in 2..6, "seed $seed: gold ${state.player.gold} outside drop range")
 
             state = engine.step(state, Action.Move(TestWorlds.STAIR)).state
-            assertIs<Mode.Victory>(state.mode, "seed $seed: reaching the stair should win")
+            assertIs<Mode.Victory>(state.mode, "seed $seed")
             assertTrue(engine.legalActions(state).isEmpty(), "seed $seed: victory must be terminal")
+            wins++
         }
+        assertEquals(50, wins)
+    }
+
+    @Test
+    fun `combat opens with a readable telegraph`() {
+        var state = engine.newGame(2, "Reader")
+        val result = engine.step(state, Action.Move(TestWorlds.PASSAGE))
+        assertTrue(result.events.any { it is Event.CombatStarted })
+        assertTrue(result.events.any { it is Event.MonsterIntentDrawn }, "an intent must be telegraphed at combat start")
+        state = result.state
+        val mode = assertIs<Mode.Combat>(state.mode)
+        assertTrue(mode.monsterIntent.value.isNotEmpty(), "intent must be drawn, not sentinel")
+        assertTrue(state.feed.any { it.text.startsWith("⚠") }, "telegraph must reach the feed")
     }
 
     @Test
@@ -72,25 +79,12 @@ class EngineFlowTest {
     }
 
     @Test
-    fun `defending halves incoming damage`() {
-        // defended damage = ceil(raw/2) and raw max = (3 + 6 - 1) crit-doubled = 16 → max 8.
-        for (seed in 1L..30L) {
-            var state = engine.newGame(seed, "Turtle")
-            state = engine.step(state, Action.Move(TestWorlds.PASSAGE)).state
-            val result = engine.step(state, Action.Defend)
-            val strike = result.events.filterIsInstance<Event.MonsterStruckPlayer>().single()
-            assertTrue(strike.defended)
-            assertTrue(strike.damage in 1..8, "seed $seed: defended damage ${strike.damage} outside 1..8")
-        }
-    }
-
-    @Test
     fun `slaying a monster on the goal room wins immediately`() {
         val goalEngine = Engine(TestWorlds.monsterOnGoal())
         var state = goalEngine.newGame(5, "Hero")
         state = goalEngine.step(state, Action.Move(TestWorlds.PASSAGE)).state
         assertIs<Mode.Combat>(state.mode)
-        val result = goalEngine.step(state, Action.Attack)
+        val result = goalEngine.step(state, Action.QuickStrike)
         assertTrue(result.events.any { it is Event.MonsterSlain }, "1-hp wisp must die to any hit")
         assertTrue(result.events.any { it is Event.GameWon }, "goal room must trigger victory after the kill")
         assertIs<Mode.Victory>(result.state.mode)
@@ -99,7 +93,7 @@ class EngineFlowTest {
     @Test
     fun `illegal actions are rejected loudly`() {
         val state = engine.newGame(1, "Hero")
-        assertFailsWith<IllegalArgumentException> { engine.step(state, Action.Attack) }
+        assertFailsWith<IllegalArgumentException> { engine.step(state, Action.QuickStrike) }
         assertFailsWith<IllegalArgumentException> { engine.step(state, Action.Take(TestWorlds.SWORD)) }
     }
 

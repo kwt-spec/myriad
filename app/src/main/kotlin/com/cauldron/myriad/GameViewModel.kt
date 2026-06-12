@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cauldron.myriad.content.EmberCellar
 import com.cauldron.myriad.engine.Engine
 import com.cauldron.myriad.engine.model.Action
+import com.cauldron.myriad.engine.model.Event
 import com.cauldron.myriad.engine.model.FeedKind
 import com.cauldron.myriad.engine.model.GameState
 import com.cauldron.myriad.engine.model.appendFeed
@@ -27,7 +28,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     sealed interface UiState {
         data object Loading : UiState
         data class Title(val hasSave: Boolean) : UiState
-        data class Playing(val game: GameState, val chips: List<Chip>) : UiState
+        data class Playing(
+            val game: GameState,
+            val chips: List<Chip>,
+            /** Events from the step that produced this state — drives popups/shake/haptics. */
+            val lastEvents: List<Event> = emptyList(),
+        ) : UiState
     }
 
     data class Chip(val action: Action, val label: String)
@@ -82,11 +88,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** Game logic runs on the main thread only — a single-threaded actor by construction. */
     fun act(action: Action) {
         val current = (_ui.value as? UiState.Playing)?.game ?: return
-        present(engine.step(current, action).state)
+        val result = engine.step(current, action)
+        present(result.state, result.events)
     }
 
-    private fun present(game: GameState) {
-        _ui.value = UiState.Playing(game, chipsFor(game))
+    private fun present(game: GameState, events: List<Event> = emptyList()) {
+        _ui.value = UiState.Playing(game, chipsFor(game), events)
         pendingSave.value = SaveCodec.fresh(game)
     }
 
@@ -103,8 +110,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 label = when (action) {
                     Action.Look -> "Look around"
                     Action.Search -> "Search"
-                    Action.Attack -> "Attack"
-                    Action.Defend -> "Brace"
+                    Action.QuickStrike -> "Quick strike"
+                    Action.HeavyStrike -> "Heavy strike"
+                    Action.Brace -> "Brace"
                     Action.Flee -> "Flee"
                     is Action.Move ->
                         content.rooms.getValue(game.currentRoom)

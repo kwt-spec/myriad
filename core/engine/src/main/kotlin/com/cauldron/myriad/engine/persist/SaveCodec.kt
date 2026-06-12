@@ -20,8 +20,8 @@ data class SaveFile(
  * walk the backup chain (MASTER_PLAN §8).
  */
 object SaveCodec {
-    const val FORMAT_VERSION = 1
-    const val ENGINE_VERSION = "0.1.0"
+    const val FORMAT_VERSION = 2
+    const val ENGINE_VERSION = "0.2.0"
 
     private val MAGIC = byteArrayOf(0x4D, 0x59, 0x52, 0x31) // "MYR1"
     private const val SHA_LEN = 32
@@ -59,7 +59,7 @@ object SaveCodec {
                 "save format ${save.formatVersion} is newer than supported $FORMAT_VERSION"
             )
         }
-        return save
+        return Migrations.migrate(save)
     }
 
     private fun sha256(bytes: ByteArray): ByteArray =

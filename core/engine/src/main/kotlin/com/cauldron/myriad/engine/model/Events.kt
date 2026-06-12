@@ -23,20 +23,45 @@ sealed interface Event {
 
     @Serializable
     @SerialName("player_struck")
-    data class PlayerStruckMonster(val monster: MonsterId, val damage: Int, val crit: Boolean) : Event
+    data class PlayerStruckMonster(
+        val monster: MonsterId,
+        val damage: Int,
+        val crit: Boolean,
+        val heavy: Boolean,
+    ) : Event
 
     @Serializable
     @SerialName("monster_struck")
     data class MonsterStruckPlayer(
         val monster: MonsterId,
+        val move: MoveId,
         val damage: Int,
         val crit: Boolean,
-        val defended: Boolean,
+        val braced: Boolean,
     ) : Event
 
     @Serializable
-    @SerialName("defended")
-    data object PlayerDefended : Event
+    @SerialName("intent_drawn")
+    data class MonsterIntentDrawn(val monster: MonsterId, val move: MoveId) : Event
+
+    @Serializable
+    @SerialName("braced")
+    data object PlayerBraced : Event
+
+    /**
+     * Syncs the ATB bookkeeping (gauges/stamina/brace/intent) into Mode.Combat
+     * at the end of a combat resolution, so reduce alone reconstructs the exact
+     * state. Carries no narration.
+     */
+    @Serializable
+    @SerialName("combat_ticked")
+    data class CombatTicked(
+        val playerGauge: Int,
+        val monsterGauge: Int,
+        val playerStamina: Int,
+        val braced: Boolean,
+        val monsterIntent: MoveId,
+    ) : Event
 
     @Serializable
     @SerialName("monster_slain")

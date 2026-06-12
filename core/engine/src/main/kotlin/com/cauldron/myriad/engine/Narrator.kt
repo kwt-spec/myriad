@@ -4,6 +4,9 @@ import com.cauldron.myriad.engine.model.ContentPack
 import com.cauldron.myriad.engine.model.Event
 import com.cauldron.myriad.engine.model.FeedKind
 import com.cauldron.myriad.engine.model.GameState
+import com.cauldron.myriad.engine.model.MonsterId
+import com.cauldron.myriad.engine.model.MoveId
+import com.cauldron.myriad.engine.model.roomStateFor
 
 /**
  * Tier-0 narration (MASTER_PLAN §5): deterministic templates, always available,
@@ -14,7 +17,7 @@ object Narrator {
 
     fun describeRoom(state: GameState, content: ContentPack): String {
         val def = content.rooms.getValue(state.currentRoom)
-        val roomState = state.rooms.getValue(state.currentRoom)
+        val roomState = state.roomStateFor(state.currentRoom, content)
         return buildString {
             append("— ").append(def.name).append(" —\n")
             append(def.description)
@@ -33,12 +36,13 @@ object Narrator {
     fun kindOf(event: Event): FeedKind = when (event) {
         is Event.LookedAround, is Event.MovedTo, is Event.FleeSucceeded -> FeedKind.NARRATION
         is Event.CombatStarted, is Event.PlayerStruckMonster, is Event.MonsterStruckPlayer,
-        Event.PlayerDefended, is Event.FleeFailed, is Event.MonsterSlain -> FeedKind.COMBAT
+        Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
+        is Event.MonsterIntentDrawn, is Event.CombatTicked -> FeedKind.COMBAT
         is Event.ItemFound, is Event.ItemTaken, is Event.Equipped -> FeedKind.LOOT
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
     }
 
-    /** Renders one event against the post-reduce state. */
+    /** Renders one event against the post-reduce state. Blank = no feed line. */
     fun narrate(event: Event, state: GameState, content: ContentPack): String = when (event) {
         is Event.LookedAround -> describeRoom(state, content)
 
@@ -49,22 +53,31 @@ object Narrator {
             "${def.description}\n\nThe ${def.name} attacks!"
         }
 
+        is Event.MonsterIntentDrawn -> "⚠ ${telegraphOf(event.monster, event.move, content)}"
+
         is Event.PlayerStruckMonster -> {
             val name = content.monsters.getValue(event.monster).name
-            if (event.crit) "A perfect strike — you hit the $name for ${event.damage}!"
-            else "You strike the $name for ${event.damage}."
-        }
-
-        is Event.MonsterStruckPlayer -> {
-            val name = content.monsters.getValue(event.monster).name
             when {
-                event.defended -> "You brace behind your guard; the $name lands only ${event.damage}."
-                event.crit -> "The $name savages you for ${event.damage}!"
-                else -> "The $name bites back for ${event.damage}."
+                event.crit && event.heavy -> "Your heavy blow lands true — the $name takes ${event.damage}!"
+                event.heavy -> "Your heavy blow crashes into the $name for ${event.damage}."
+                event.crit -> "A perfect cut — you hit the $name for ${event.damage}!"
+                else -> "You snap a quick cut at the $name — ${event.damage}."
             }
         }
 
-        Event.PlayerDefended -> "You raise your guard."
+        is Event.MonsterStruckPlayer -> {
+            val monster = content.monsters.getValue(event.monster)
+            val move = monster.moves.firstOrNull { it.id == event.move } ?: monster.moves.first()
+            when {
+                event.braced -> "You take the ${move.name} on your guard — only ${event.damage}."
+                event.crit -> "The ${monster.name}'s ${move.name} lands savagely — ${event.damage}!"
+                else -> "The ${monster.name}'s ${move.name} hits for ${event.damage}."
+            }
+        }
+
+        Event.PlayerBraced -> "You plant your feet and raise your guard."
+
+        is Event.CombatTicked -> "" // bookkeeping only — no feed line
 
         is Event.MonsterSlain -> {
             val name = content.monsters.getValue(event.monster).name
@@ -102,5 +115,11 @@ object Narrator {
         Event.GameWon ->
             "You climb the stair into ember-light and open air.\n\n— THE CELLAR IS CLEARED — " +
                 "turn ${state.turn}, ${state.player.gold} gold. The world above awaits; this was only the first chamber of Myriad."
+    }
+
+    fun telegraphOf(monsterId: MonsterId, moveId: MoveId, content: ContentPack): String {
+        val monster = content.monsters.getValue(monsterId)
+        val move = monster.moves.firstOrNull { it.id == moveId } ?: monster.moves.first()
+        return move.telegraph
     }
 }

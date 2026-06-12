@@ -30,9 +30,29 @@ sealed interface Mode {
     @SerialName("exploring")
     data object Exploring : Mode
 
+    /**
+     * Tick-ATB combat (MASTER_PLAN M1a). Gauges fill by speed per tick; the
+     * player acts at GAUGE_MAX, the monster executes its telegraphed intent
+     * when its gauge wraps. Defaults are the v1→v2 migration values: a v1 save
+     * decodes straight into "player ready to act, monster winding up" —
+     * `monsterIntent` defaults to a sentinel the engine resolves to the
+     * monster's first move (also makes renamed move ids tombstone-safe).
+     */
     @Serializable
     @SerialName("combat")
-    data class Combat(val monster: MonsterId) : Mode
+    data class Combat(
+        val monster: MonsterId,
+        val playerGauge: Int = GAUGE_MAX,
+        val monsterGauge: Int = 0,
+        val playerStamina: Int = STAMINA_MAX,
+        val monsterIntent: MoveId = MoveId(""),
+        val braced: Boolean = false,
+    ) : Mode {
+        companion object {
+            const val GAUGE_MAX = 1000
+            const val STAMINA_MAX = 100
+        }
+    }
 
     @Serializable
     @SerialName("dead")
@@ -73,6 +93,16 @@ data class GameState(
         const val FEED_LIMIT = 500
     }
 }
+
+/**
+ * Tolerant room-state lookup: rooms added by newer content packs don't exist in
+ * older saves' state maps — seed them fresh from the pack instead of crashing.
+ * (Found by the v1-device golden save: it predates the Collapsed Vault.)
+ */
+fun GameState.roomStateFor(id: RoomId, content: ContentPack): RoomState =
+    rooms[id] ?: RoomState(
+        monsterHp = content.rooms.getValue(id).monster?.let { content.monsters.getValue(it).maxHp }
+    )
 
 /** Append narration, assigning monotonic ids and trimming to FEED_LIMIT. */
 fun GameState.appendFeed(entries: List<Pair<FeedKind, String>>): GameState {

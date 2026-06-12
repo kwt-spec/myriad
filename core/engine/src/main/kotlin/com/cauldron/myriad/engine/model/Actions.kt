@@ -27,12 +27,16 @@ sealed interface Action {
     data class Equip(val item: ItemId) : Action
 
     @Serializable
-    @SerialName("attack")
-    data object Attack : Action
+    @SerialName("quick_strike")
+    data object QuickStrike : Action
 
     @Serializable
-    @SerialName("defend")
-    data object Defend : Action
+    @SerialName("heavy_strike")
+    data object HeavyStrike : Action
+
+    @Serializable
+    @SerialName("brace")
+    data object Brace : Action
 
     @Serializable
     @SerialName("flee")

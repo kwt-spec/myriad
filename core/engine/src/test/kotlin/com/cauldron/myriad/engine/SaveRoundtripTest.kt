@@ -41,29 +41,32 @@ class SaveRoundtripTest {
         assertIs<Mode.Exploring>(exploring.mode)
         assertEquals(exploring, SaveCodec.decode(SaveCodec.encode(SaveCodec.fresh(exploring))).state)
 
-        // Combat
+        // Combat — including freshly drawn intent and gauges.
         var combat = engine.newGame(1, "Hero")
         combat = engine.step(combat, Action.Move(TestWorlds.PASSAGE)).state
         assertIs<Mode.Combat>(combat.mode)
         assertEquals(combat, SaveCodec.decode(SaveCodec.encode(SaveCodec.fresh(combat))).state)
 
-        // Dead — brutal monster guarantees death on the first exchange.
+        // Dead — the brutal horror guarantees it within a few exchanges.
         val brutalEngine = Engine(TestWorlds.brutal())
         var dead = brutalEngine.newGame(1, "Doomed")
         dead = brutalEngine.step(dead, Action.Move(TestWorlds.PASSAGE)).state
-        while (dead.mode is Mode.Combat) {
-            dead = brutalEngine.step(dead, Action.Attack).state
+        var guard = 0
+        while (dead.mode is Mode.Combat && guard < 10) {
+            dead = brutalEngine.step(dead, Action.QuickStrike).state
+            guard++
         }
         assertIs<Mode.Dead>(dead.mode)
         assertEquals(dead, SaveCodec.decode(SaveCodec.encode(SaveCodec.fresh(dead))).state)
 
-        // Victory
+        // Victory — armed, telegraph-aware run.
         var victory = engine.newGame(1, "Hero")
         victory = engine.step(victory, Action.Search).state
         victory = engine.step(victory, Action.Take(TestWorlds.SWORD)).state
         victory = engine.step(victory, Action.Equip(TestWorlds.SWORD)).state
         victory = engine.step(victory, Action.Move(TestWorlds.PASSAGE)).state
-        while (victory.mode is Mode.Combat) victory = engine.step(victory, Action.Attack).state
+        victory = fightSmart(engine, victory)
+        assertIs<Mode.Exploring>(victory.mode, "seed 1 smart fight should win")
         victory = engine.step(victory, Action.Move(TestWorlds.STAIR)).state
         assertIs<Mode.Victory>(victory.mode)
         assertEquals(victory, SaveCodec.decode(SaveCodec.encode(SaveCodec.fresh(victory))).state)
@@ -76,13 +79,12 @@ class SaveRoundtripTest {
         assertIs<Mode.Combat>(state.mode)
 
         val restored = SaveCodec.decode(SaveCodec.encode(SaveCodec.fresh(state))).state
-        // Ten combat rounds of identical rolls prove the RNG streams survived intact.
         var a = state
         var b = restored
         var rounds = 0
         while (a.mode is Mode.Combat && rounds < 10) {
-            val ra = engine.step(a, Action.Defend)
-            val rb = engine.step(b, Action.Defend)
+            val ra = engine.step(a, Action.Brace)
+            val rb = engine.step(b, Action.Brace)
             assertEquals(ra.events, rb.events, "round $rounds rolls diverged")
             a = ra.state
             b = rb.state

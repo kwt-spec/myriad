@@ -13,3 +13,7 @@ value class ItemId(val value: String)
 @Serializable
 @JvmInline
 value class MonsterId(val value: String)
+
+@Serializable
+@JvmInline
+value class MoveId(val value: String)

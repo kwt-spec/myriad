@@ -10,6 +10,20 @@ data class ItemDef(
     val isEquippable: Boolean get() = attackBonus != 0 || defenseBonus != 0
 }
 
+/**
+ * One telegraphed monster move. Damage = attack × powerNum/powerDen, fed into
+ * the shared damage formula. The telegraph is shown to the player BEFORE the
+ * move lands — readable combat is the whole point (MASTER_PLAN M1a).
+ */
+data class MoveDef(
+    val id: MoveId,
+    val name: String,
+    val telegraph: String,
+    val powerNum: Int,
+    val powerDen: Int,
+    val weight: Int,
+)
+
 data class MonsterDef(
     val id: MonsterId,
     val name: String,
@@ -17,6 +31,9 @@ data class MonsterDef(
     val maxHp: Int,
     val attack: Int,
     val defense: Int,
+    /** ATB gauge fill per tick; player is 100. 240 means it acts ~2.4× as often. */
+    val speed: Int,
+    val moves: List<MoveDef>,
     val goldDrop: IntRange,
 )
 
@@ -75,11 +92,26 @@ data class ContentPack(
 
         for (monster in monsters.values) {
             if (monster.maxHp <= 0) problems += "monster '${monster.id.value}': maxHp must be positive"
+            if (monster.speed <= 0) problems += "monster '${monster.id.value}': speed must be positive"
+            if (monster.speed > 1_000) problems += "monster '${monster.id.value}': speed above 1000 acts more than once per tick"
             if (monster.goldDrop.isEmpty()) problems += "monster '${monster.id.value}': empty goldDrop range"
             if (monster.goldDrop.first < 0) problems += "monster '${monster.id.value}': negative goldDrop"
             if (monster.goldDrop.last > GOLD_DROP_CAP) {
                 // Also keeps the RNG bound math (range width + 1) far from Int overflow.
                 problems += "monster '${monster.id.value}': goldDrop exceeds cap $GOLD_DROP_CAP"
+            }
+            if (monster.moves.isEmpty()) problems += "monster '${monster.id.value}': needs at least one move"
+            if (monster.moves.map { it.id }.toSet().size != monster.moves.size) {
+                problems += "monster '${monster.id.value}': duplicate move ids"
+            }
+            for (move in monster.moves) {
+                if (move.weight <= 0) problems += "move '${move.id.value}': weight must be positive"
+                if (move.powerNum <= 0 || move.powerDen <= 0) problems += "move '${move.id.value}': power must be positive"
+                if (move.telegraph.isBlank()) problems += "move '${move.id.value}': blank telegraph"
+                if (move.name.isBlank()) problems += "move '${move.id.value}': blank name"
+            }
+            if (monster.moves.sumOf { it.weight.toLong() } > 1_000_000L) {
+                problems += "monster '${monster.id.value}': move weights sum too large"
             }
         }
 
