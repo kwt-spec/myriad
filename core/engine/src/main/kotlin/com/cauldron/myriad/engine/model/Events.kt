@@ -73,6 +73,14 @@ sealed interface Event {
     data class PlayerHealed(val amount: Int) : Event
 
     @Serializable
+    @SerialName("monster_routed")
+    data class MonsterRouted(val monster: MonsterId) : Event
+
+    @Serializable
+    @SerialName("foraged")
+    data class Foraged(val verb: VerbId, val values: Map<MeterId, Int>) : Event
+
+    @Serializable
     @SerialName("monster_slain")
     data class MonsterSlain(val monster: MonsterId, val gold: Int) : Event
 

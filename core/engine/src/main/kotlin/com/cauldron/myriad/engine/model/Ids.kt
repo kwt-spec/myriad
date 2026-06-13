@@ -33,3 +33,7 @@ value class AbilityId(val value: String)
 @Serializable
 @JvmInline
 value class SenseId(val value: String)
+
+@Serializable
+@JvmInline
+value class VerbId(val value: String)

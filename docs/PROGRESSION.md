@@ -1,51 +1,60 @@
 # Myriad — Progression
 
-> How a Wanderer grows strong enough to clear the Ember Depths. The Body
-> constellation is the first of five trees (MASTER_PLAN §16.4); breadth scales
-> next, the way items, the world, and the bestiary did.
+> How a Wanderer grows strong enough to clear the Ember Depths. Five
+> constellations on a reusable node engine; abilities, senses, and function-verbs
+> all derive from unlocked nodes (no save-format cost). Enforced by
+> `ConstellationBreadthTest` against the live generator.
 
 ## The spine: levels + use-texture
 
-- **XP** comes from kills, scaled by the foe's threat (`maxHp/3 + attack×4 +
-  defense×2 + 8`), so deep monsters are worth far more.
-- **Levels** follow a triangular curve (`xpToReach(n) = 18·(n−1)·n`). Each level
-  grants **+12 max HP, +2 attack, +1 defense, +1 skill point**, and **heals you to
-  full** — a real moment of relief mid-delve.
-- **Weapon mastery** (use-texture): the weapon family you favour sharpens with use
-  — +1 attack per 12 landed blows, capped at +3. Small on purpose; the spine is levels.
+- **XP** from kills, scaled by threat (`maxHp/3 + attack×4 + defense×2 + 8`), then by
+  any **Mind** XP bonus.
+- **Levels** (triangular `xpToReach(n) = 18·(n−1)·n`) grant +12 HP, +2 attack, +1
+  defense, +1 skill point, and **heal to full**.
+- **Weapon mastery**: the family you favour gains +1 attack per 12 blows, capped +3.
 
-## Active abilities (combat)
+## The five constellations
 
-Learnable in the Body tree, costing stamina with a per-fight cooldown:
+Level gains are **stored**; node bonuses are **derived**, so a respec just clears the
+unlocked set (at any camp, `50 × level` gold — the first economy sink). Every
+node-effect class is used:
 
-| ability | effect | stamina | cooldown |
-|---|---|---|---|
-| **Sunder** | guard-break strike (×1.8, ignores 6 defence, +10% crit) | 35 | 2 turns |
-| **Second Wind** | heal 35% of max HP | 45 | 4 turns |
-| **Cinderbrand** | furnace finisher (×3.0, ignores 2 defence, +15% crit) | 55 | 3 turns |
+| tree | theme | signature nodes |
+|---|---|---|
+| **Body** | the flesh | Hardy (HP), Iron Skin (−dmg), Brute Force (atk), Deep Lungs, Unbroken; grants Sunder, Second Wind, Cinderbrand |
+| **Mind** | the mover | Quick Study (+XP), Economy of Motion (−stamina cost), Quicken/Overclock (−cooldown), Focus; grants Focused Strike, Mending Trance |
+| **Senses** | the perceiver | grants all 6 senses + Sharp Eyes (crit), Evasion (−dmg); grants Pre-emptive Strike, Pinpoint, Execute |
+| **Craft** | the provider | Scavenger/Hoarder (+gold), Make Do (−stamina); grants the Forage & Kindle verbs, Bloodletting, Caustic Brand |
+| **Voice** | the breaker | Presence (atk), Inspire (+XP), Commanding (crit); grants Intimidate, Dread Howl (rout), Rally Cry, War Chant |
 
-## The Body constellation
+~70 prereq-chained nodes, ≥9 per tree (binding floor `NODE_FLOOR`).
 
-14 prereq-chained nodes exercising every node-effect class — stat ranks, ability
-grants, and a sense grant:
+## Abilities (14)
 
-- **Hardy I/II/III** → +8/+12/+18 max HP · **Unbroken** (capstone) → +30 max HP
-- **Iron Skin I/II** → −1/−2 damage taken
-- **Deep Lungs** → +40 max stamina · **Brute Force I/II** → +2/+3 attack ·
-  **Bloodied Edge** → +12% crit
-- **Sunder · Second Wind · Cinderbrand** → grant the abilities above
-- **Deathsight** (sense) → combat narration reveals the foe's exact HP and the
-  severity of its telegraphed move (a sense literally unlocks sentences, §16.4)
+Four kinds, all resolved in the tick-ATB engine with stamina + per-fight cooldown:
 
-Level gains are **stored**; node bonuses are **derived**, so a respec just changes
-the unlocked set and every number follows. **Respec** is available at any camp for
-`50 × level` gold — the economy's first real sink (sinks before faucets, §4).
+- **Strikes**: Sunder, Cinderbrand, Focused Strike, Pre-emptive Strike, Pinpoint,
+  Caustic Brand, War Chant, Execute (power, defence-ignore, and crit riders vary).
+- **Heals**: Second Wind, Mending Trance, Rally Cry.
+- **Life-strike**: Bloodletting (heals for a share of damage dealt).
+- **Rout**: Intimidate (35%), Dread Howl (60%) — end the fight outright; the foe flees.
+
+## Senses (6) — text-native power
+
+Each owned sense adds an intel line to combat narration (a sense literally unlocks
+sentences): **Deathsight** (exact HP), **Foresight** (blow severity), **Aurasight**
+(where the guard is thin), **Greedsense** (is the kill worth it), **Tremorsense**
+(how fast it acts), **Soulsight** (the insight a death yields).
+
+## Function-verbs (2)
+
+**Forage** and **Kindle** (Craft) restore warmth without a full camp — exploration
+sustain between hearths.
 
 ## Proven winnable
 
-The Gauntlet's `delver` strategy — a competent bot that equips upgrades, levels,
-spends points on offense and abilities, camps to heal, fights with Sunder/Second
-Wind, and descends — **clears all 100 floors and claims the First Ember in 100% of
-runs, reaching ~level 25**, with zero crashes and zero softlocks. Deep floors went
-from an unwinnable wall to a beatable climb. (Balance is a living dial tracked by
-the Gauntlet, not frozen here.)
+The Gauntlet `delver` — equips upgrades, levels, builds durability + a heal first
+then offense, camps, fights with abilities — clears all 100 floors and claims the
+First Ember in ~80% of runs (~level 23), with zero crashes and zero softlocks; the
+random fuzzer (2,000 runs) is also clean. Balance is a living dial tracked by the
+Gauntlet, not frozen here.

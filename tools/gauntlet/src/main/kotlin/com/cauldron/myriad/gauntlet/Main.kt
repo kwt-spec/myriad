@@ -133,18 +133,26 @@ private fun floorOf(state: GameState): Int {
  * and always push deeper.
  */
 private fun delverChoice(engine: Engine, state: GameState, legal: List<Action>): Action {
-    // 1) Spend points — prefer teeth (abilities, attack, crit) over pure padding,
-    //    so the bot gains Sunder/Second Wind and real offense as it levels.
+    // 1) Spend points in a sensible build order: survivability and offense first,
+    //    a heal ability early for sustain, then utility, then flavour. A glass
+    //    cannon dies in the deep; a durable striker with a heal endures.
     engine.unlockableNodes(state).minByOrNull { id ->
-        val node = engine.content.nodes.getValue(id)
-        val priority = when (node.effect) {
-            is com.cauldron.myriad.engine.model.NodeEffect.GrantAbility -> 0
-            is com.cauldron.myriad.engine.model.NodeEffect.Attack,
-            is com.cauldron.myriad.engine.model.NodeEffect.Crit -> 1
-            is com.cauldron.myriad.engine.model.NodeEffect.GrantSense -> 3
-            else -> 2
+        val effect = engine.content.nodes.getValue(id).effect
+        val priority = when (effect) {
+            is com.cauldron.myriad.engine.model.NodeEffect.MaxHp,
+            is com.cauldron.myriad.engine.model.NodeEffect.DamageReduction,
+            is com.cauldron.myriad.engine.model.NodeEffect.Attack -> 0
+            is com.cauldron.myriad.engine.model.NodeEffect.GrantAbility ->
+                if (engine.content.abilities.getValue(effect.ability).kind is com.cauldron.myriad.engine.model.AbilityKind.Heal) 0 else 1
+            is com.cauldron.myriad.engine.model.NodeEffect.Crit,
+            is com.cauldron.myriad.engine.model.NodeEffect.MaxStamina,
+            is com.cauldron.myriad.engine.model.NodeEffect.StaminaEfficiency,
+            is com.cauldron.myriad.engine.model.NodeEffect.CooldownReduction -> 1
+            is com.cauldron.myriad.engine.model.NodeEffect.XpBonus,
+            is com.cauldron.myriad.engine.model.NodeEffect.GoldFind -> 2
+            else -> 3 // senses, verbs
         }
-        priority * 100 + node.cost
+        priority * 100 + engine.content.nodes.getValue(id).cost
     }?.let { return Action.UnlockNode(it) }
 
     val player = state.player

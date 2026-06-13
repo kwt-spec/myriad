@@ -77,11 +77,11 @@ class Engine(val content: ContentPack) {
     fun legalActions(state: GameState): List<Action> = when (val mode = state.mode) {
         Mode.Dead, Mode.Victory -> emptyList()
         is Mode.Combat -> buildList {
-            if (mode.playerStamina >= STAMINA_QUICK) add(Action.QuickStrike)
-            if (mode.playerStamina >= STAMINA_HEAVY) add(Action.HeavyStrike)
+            if (mode.playerStamina >= staminaCost(state, STAMINA_QUICK)) add(Action.QuickStrike)
+            if (mode.playerStamina >= staminaCost(state, STAMINA_HEAVY)) add(Action.HeavyStrike)
             for (ability in unlockedAbilities(state)) {
                 val ready = (mode.abilityCooldowns[ability.id] ?: 0) == 0
-                if (ready && mode.playerStamina >= ability.staminaCost) add(Action.UseAbility(ability.id))
+                if (ready && mode.playerStamina >= staminaCost(state, ability.staminaCost)) add(Action.UseAbility(ability.id))
             }
             add(Action.Brace)
             add(Action.Flee)
@@ -91,6 +91,10 @@ class Engine(val content: ContentPack) {
             val room = content.rooms.getValue(state.currentRoom)
             val roomState = state.roomStateFor(state.currentRoom, content)
             if (room.haven && content.meters.isNotEmpty()) add(Action.Camp)
+            // Function-verbs: Forage/Kindle warm you without a full camp, where meters can rise.
+            if (content.meters.isNotEmpty() && content.meters.keys.any { (state.meters[it] ?: 0) < content.meters.getValue(it).cap }) {
+                for (verb in unlockedVerbs(state)) add(Action.UseVerb(verb))
+            }
             if (room.hiddenItem != null && !roomState.searched) add(Action.Search)
             for (item in roomState.itemsOnFloor) add(Action.Take(item))
             for (item in state.player.inventory) {
@@ -171,6 +175,15 @@ class Engine(val content: ContentPack) {
         Action.Flee -> resolveCombat(state, dice, CombatChoice.Flee)
         is Action.UseAbility -> resolveCombat(state, dice, CombatChoice.Ability(content.abilities.getValue(action.ability)))
 
+        is Action.UseVerb -> {
+            // Forage/Kindle scrape warmth back without a full camp.
+            val gain = if (action.verb == com.cauldron.myriad.engine.model.Verbs.KINDLE) FORAGE_KINDLE else FORAGE_GAIN
+            val values = content.meters.mapValues { (id, def) ->
+                ((state.meterFor(id, content)) + gain).coerceAtMost(def.cap)
+            }
+            listOf(Event.Foraged(action.verb, values))
+        }
+
         is Action.UnlockNode -> listOf(Event.NodeUnlocked(action.node))
         Action.Respec -> {
             val refunded = state.player.unlockedNodes.sumOf { content.nodes.getValue(it).cost }
@@ -225,10 +238,11 @@ class Engine(val content: ContentPack) {
 
     /** The kill sequence shared by basic strikes and ability strikes. */
     private fun MutableList<Event>.addSlain(state: GameState, monsterDef: MonsterDef, dice: Dice) {
-        val gold = dice.roll(RngStream.LOOT, monsterDef.goldDrop)
+        val baseGold = dice.roll(RngStream.LOOT, monsterDef.goldDrop)
+        val gold = (baseGold.toLong() * (100 + goldFind(state)) / 100).toInt()
         add(Event.MonsterSlain(monsterDef.id, gold))
         rollLoot(monsterDef, dice)?.let { add(Event.ItemDropped(monsterDef.id, it)) }
-        val gained = xpFor(monsterDef)
+        val gained = xpFor(monsterDef) * (100 + xpBonus(state)) / 100
         add(Event.XpGained(gained))
         var total = state.player.xp + gained
         var level = state.player.level
@@ -267,7 +281,7 @@ class Engine(val content: ContentPack) {
         when (choice) {
             CombatChoice.Quick, CombatChoice.Heavy -> {
                 val heavy = choice == CombatChoice.Heavy
-                stamina -= if (heavy) STAMINA_HEAVY else STAMINA_QUICK
+                stamina -= staminaCost(state, if (heavy) STAMINA_HEAVY else STAMINA_QUICK)
                 val roll = dice.roll(RngStream.COMBAT, 1..6)
                 val crit = playerCrit(state, dice, baseCrit = roll == 6 || (heavy && roll == 5))
                 val damage = scaledDamage(
@@ -306,27 +320,34 @@ class Engine(val content: ContentPack) {
 
             is CombatChoice.Ability -> {
                 val ability = choice.def
-                stamina -= ability.staminaCost
+                stamina -= staminaCost(state, ability.staminaCost)
                 add(Event.AbilityUsed(ability.id))
                 when (val kind = ability.kind) {
                     is com.cauldron.myriad.engine.model.AbilityKind.Strike -> {
                         val roll = dice.roll(RngStream.COMBAT, 1..6)
                         val crit = playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = kind.critBonus)
                         val damage = scaledDamage(
-                            attack = playerAttack(state),
-                            powerNum = kind.powerNum,
-                            powerDen = kind.powerDen,
-                            roll = roll,
-                            defense = (monsterDef.defense - kind.defenseIgnored).coerceAtLeast(0),
-                            crit = crit,
-                            halved = false,
+                            attack = playerAttack(state), powerNum = kind.powerNum, powerDen = kind.powerDen,
+                            roll = roll, defense = (monsterDef.defense - kind.defenseIgnored).coerceAtLeast(0),
+                            crit = crit, halved = false,
                         )
                         add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy = true))
                         monsterHp -= damage
-                        if (monsterHp <= 0) {
-                            addSlain(state, monsterDef, dice)
-                            return@buildList
-                        }
+                        if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.LifeStrike -> {
+                        val roll = dice.roll(RngStream.COMBAT, 1..6)
+                        val crit = playerCrit(state, dice, baseCrit = roll == 6)
+                        val damage = scaledDamage(
+                            attack = playerAttack(state), powerNum = kind.powerNum, powerDen = kind.powerDen,
+                            roll = roll, defense = monsterDef.defense, crit = crit, halved = false,
+                        )
+                        add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy = true))
+                        monsterHp -= damage
+                        if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
+                        val healed = (damage.toLong() * kind.healPercent / 100).toInt()
+                            .coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
+                        if (healed > 0) { playerHp += healed; add(Event.PlayerHealed(healed)) }
                     }
                     is com.cauldron.myriad.engine.model.AbilityKind.Heal -> {
                         val healed = ((maxHp.toLong() * kind.percentNum / kind.percentDen).toInt())
@@ -334,8 +355,15 @@ class Engine(val content: ContentPack) {
                         playerHp += healed
                         add(Event.PlayerHealed(healed))
                     }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Rout -> {
+                        if (dice.chance(RngStream.COMBAT, kind.chancePercent)) {
+                            add(Event.MonsterRouted(mode.monster))
+                            return@buildList
+                        }
+                    }
                 }
-                if (ability.cooldownTurns > 0) cooldowns = cooldowns + (ability.id to ability.cooldownTurns)
+                val cd = (ability.cooldownTurns - cooldownReduction(state)).coerceAtLeast(if (ability.cooldownTurns > 0) 1 else 0)
+                if (cd > 0) cooldowns = cooldowns + (ability.id to cd)
                 playerGauge = Mode.Combat.GAUGE_MAX - RECOVERY_ABILITY
             }
         }
@@ -468,6 +496,12 @@ class Engine(val content: ContentPack) {
 
         is Event.AbilityUsed -> state
 
+        is Event.MonsterRouted -> state
+            .updateRoom(state.currentRoom) { it.copy(monsterHp = null) }
+            .copy(mode = Mode.Exploring)
+
+        is Event.Foraged -> state.copy(meters = state.meters + event.values)
+
         is Event.PlayerHealed -> state.copy(
             player = state.player.copy(hp = (state.player.hp + event.amount).coerceAtMost(effectiveMaxHp(state)))
         )
@@ -595,6 +629,27 @@ class Engine(val content: ContentPack) {
     fun damageReduction(state: GameState): Int =
         nodeSum<com.cauldron.myriad.engine.model.NodeEffect.DamageReduction>(state) { it.amount }
 
+    fun xpBonus(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.XpBonus>(state) { it.percent }
+
+    fun goldFind(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.GoldFind>(state) { it.percent }
+
+    fun staminaEfficiency(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.StaminaEfficiency>(state) { it.percent }.coerceAtMost(80)
+
+    fun cooldownReduction(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.CooldownReduction>(state) { it.turns }
+
+    /** A strike/ability stamina cost after Mind-tree efficiency. */
+    fun staminaCost(state: GameState, base: Int): Int =
+        (base.toLong() * (100 - staminaEfficiency(state)) / 100).toInt().coerceAtLeast(1)
+
+    fun unlockedVerbs(state: GameState): List<com.cauldron.myriad.engine.model.VerbId> =
+        state.player.unlockedNodes.mapNotNull {
+            (content.nodes[it]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantVerb)?.verb
+        }
+
     fun unlockedAbilities(state: GameState): List<com.cauldron.myriad.engine.model.AbilityDef> =
         state.player.unlockedNodes.mapNotNull { id ->
             (content.nodes[id]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantAbility)
@@ -653,6 +708,8 @@ class Engine(val content: ContentPack) {
         const val STAMINA_HEAVY = 40
         const val STAMINA_BRACE_RESTORE = 25
         const val RECOVERY_ABILITY = 1300
+        const val FORAGE_GAIN = 12
+        const val FORAGE_KINDLE = 25
 
         // Progression
         const val MASTERY_PER_RANK = 12

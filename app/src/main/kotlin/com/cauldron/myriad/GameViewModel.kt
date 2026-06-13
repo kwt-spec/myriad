@@ -180,6 +180,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     Action.Brace -> "Brace"
                     Action.Flee -> "Flee"
                     is Action.UseAbility -> "✦ ${content.abilities.getValue(action.ability).name}"
+                    is Action.UseVerb -> if (action.verb == com.cauldron.myriad.engine.model.Verbs.KINDLE) "Kindle" else "Forage"
                     is Action.Move ->
                         content.rooms.getValue(game.currentRoom)
                             .exits.firstOrNull { it.to == action.to }?.label ?: "Go"

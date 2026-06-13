@@ -182,5 +182,6 @@ object EmberCellar {
         ),
         abilities = Constellations.abilities,
         nodes = Constellations.nodes,
+        senses = Constellations.senses,
     )
 }

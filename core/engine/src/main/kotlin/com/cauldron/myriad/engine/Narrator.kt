@@ -39,19 +39,49 @@ object Narrator {
         is Event.CombatStarted, is Event.PlayerStruckMonster, is Event.MonsterStruckPlayer,
         Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
         is Event.MonsterIntentDrawn, is Event.CombatTicked,
-        is Event.AbilityUsed, is Event.PlayerHealed -> FeedKind.COMBAT
+        is Event.AbilityUsed, is Event.PlayerHealed, is Event.MonsterRouted -> FeedKind.COMBAT
         is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped -> FeedKind.LOOT
-        is Event.Camped -> FeedKind.NARRATION
+        is Event.Camped, is Event.Foraged -> FeedKind.NARRATION
         is Event.MetersTicked, is Event.XpGained, is Event.LeveledUp,
         is Event.NodeUnlocked, is Event.Respecced -> FeedKind.SYSTEM
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
     }
 
-    private fun hasDeathsight(state: GameState, content: ContentPack): Boolean =
-        state.player.unlockedNodes.any {
-            val e = content.nodes[it]?.effect
-            e is com.cauldron.myriad.engine.model.NodeEffect.GrantSense && e.sense == Senses.DEATHSIGHT
+    /** Generic perception layer — each owned sense adds one line of intel about the foe. */
+    private fun senseLines(state: GameState, content: ContentPack, monsterId: com.cauldron.myriad.engine.model.MonsterId, moveId: MoveId): List<String> {
+        val owned = state.player.unlockedNodes.mapNotNull {
+            (content.nodes[it]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantSense)?.sense
+        }.toSet()
+        if (owned.isEmpty()) return emptyList()
+        val monster = content.monsters.getValue(monsterId)
+        val move = monster.moves.firstOrNull { it.id == moveId } ?: monster.moves.first()
+        val hp = state.roomStateFor(state.currentRoom, content).monsterHp ?: 0
+        return content.senses.values.filter { it.id in owned }.map { sense ->
+            val intel = when (sense.hint) {
+                com.cauldron.myriad.engine.model.SenseHint.EXACT_HP -> "${monster.name} has $hp HP"
+                com.cauldron.myriad.engine.model.SenseHint.DAMAGE_FORECAST -> {
+                    val sev = when {
+                        move.powerNum * 10 >= move.powerDen * 16 -> "a heavy"
+                        move.powerNum >= move.powerDen -> "a solid"
+                        else -> "a glancing"
+                    }
+                    "${sev} blow is coming"
+                }
+                com.cauldron.myriad.engine.model.SenseHint.WEAKNESS ->
+                    if (monster.defense >= 4) "it is armoured — heavy blows and Sunder bite deepest"
+                    else "its guard is thin — fast strikes will serve"
+                com.cauldron.myriad.engine.model.SenseHint.LOOT_SCENT ->
+                    if (monster.loot != null) "it carries something worth taking" else "it carries nothing of worth"
+                com.cauldron.myriad.engine.model.SenseHint.SPEED_READ ->
+                    if (monster.speed > 130) "it is fast — it will act often" else "it is slow — you have time"
+                com.cauldron.myriad.engine.model.SenseHint.SOUL_COUNT -> "its ember will yield ${xpHint(monster)} insight"
+            }
+            "  ${sense.name}: $intel."
         }
+    }
+
+    private fun xpHint(monster: com.cauldron.myriad.engine.model.MonsterDef): Long =
+        (monster.maxHp / 3L) + monster.attack * 4L + monster.defense * 2L + 8L
 
     /** Renders one event against the post-reduce state. Blank = no feed line. */
     fun narrate(event: Event, state: GameState, content: ContentPack): String = when (event) {
@@ -66,17 +96,8 @@ object Narrator {
 
         is Event.MonsterIntentDrawn -> {
             val base = "⚠ ${telegraphOf(event.monster, event.move, content)}"
-            if (!hasDeathsight(state, content)) base else {
-                val monster = content.monsters.getValue(event.monster)
-                val move = monster.moves.firstOrNull { it.id == event.move } ?: monster.moves.first()
-                val hp = state.roomStateFor(state.currentRoom, content).monsterHp ?: 0
-                val severity = when {
-                    move.powerNum * 10 >= move.powerDen * 13 -> "a heavy"
-                    move.powerNum >= move.powerDen -> "a solid"
-                    else -> "a glancing"
-                }
-                "$base\n  ◐ Deathsight: ${monster.name} has $hp HP · ${severity} blow incoming."
-            }
+            val senses = senseLines(state, content, event.monster, event.move)
+            if (senses.isEmpty()) base else "$base\n" + senses.joinToString("\n")
         }
 
         is Event.PlayerStruckMonster -> {
@@ -102,6 +123,11 @@ object Narrator {
         Event.PlayerBraced -> "You plant your feet and raise your guard."
 
         is Event.AbilityUsed -> "You unleash ${content.abilities.getValue(event.ability).name}!"
+
+        is Event.MonsterRouted ->
+            "The ${content.monsters.getValue(event.monster).name} breaks and flees into the dark."
+
+        is Event.Foraged -> "You scrape together what fuel you can; the cold eases its grip a little."
 
         is Event.PlayerHealed ->
             if (event.amount <= 0) "" else "Warmth floods back into you — you recover ${event.amount} HP."

@@ -96,6 +96,7 @@ data class ContentPack(
     val meters: Map<MeterId, MeterDef> = emptyMap(),
     val abilities: Map<AbilityId, AbilityDef> = emptyMap(),
     val nodes: Map<NodeId, ConstellationNodeDef> = emptyMap(),
+    val senses: Map<SenseId, SenseDef> = emptyMap(),
 ) {
     companion object {
         const val GOLD_DROP_CAP = 1_000_000
@@ -195,6 +196,13 @@ data class ContentPack(
                 is AbilityKind.Heal -> {
                     if (kind.percentNum <= 0 || kind.percentDen <= 0) problems += "ability '${ability.id.value}': non-positive heal"
                 }
+                is AbilityKind.LifeStrike -> {
+                    if (kind.powerNum <= 0 || kind.powerDen <= 0) problems += "ability '${ability.id.value}': non-positive power"
+                    if (kind.healPercent !in 1..100) problems += "ability '${ability.id.value}': heal percent out of range"
+                }
+                is AbilityKind.Rout -> {
+                    if (kind.chancePercent !in 1..100) problems += "ability '${ability.id.value}': rout chance out of range"
+                }
             }
         }
 
@@ -208,6 +216,11 @@ data class ContentPack(
             when (val effect = node.effect) {
                 is NodeEffect.GrantAbility ->
                     if (effect.ability !in abilities) problems += "node '${node.id.value}': grants missing ability '${effect.ability.value}'"
+                is NodeEffect.GrantSense ->
+                    if (effect.sense !in senses) problems += "node '${node.id.value}': grants missing sense '${effect.sense.value}'"
+                is NodeEffect.GrantVerb ->
+                    if (effect.verb != Verbs.FORAGE && effect.verb != Verbs.KINDLE)
+                        problems += "node '${node.id.value}': grants unknown verb '${effect.verb.value}'"
                 else -> {}
             }
         }

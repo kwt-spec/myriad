@@ -47,6 +47,10 @@ sealed interface Action {
     data class UseAbility(val ability: AbilityId) : Action
 
     @Serializable
+    @SerialName("verb")
+    data class UseVerb(val verb: VerbId) : Action
+
+    @Serializable
     @SerialName("flee")
     data object Flee : Action
 
