@@ -79,6 +79,10 @@ class Engine(val content: ContentPack) {
         is Mode.Combat -> buildList {
             if (mode.playerStamina >= STAMINA_QUICK) add(Action.QuickStrike)
             if (mode.playerStamina >= STAMINA_HEAVY) add(Action.HeavyStrike)
+            for (ability in unlockedAbilities(state)) {
+                val ready = (mode.abilityCooldowns[ability.id] ?: 0) == 0
+                if (ready && mode.playerStamina >= ability.staminaCost) add(Action.UseAbility(ability.id))
+            }
             add(Action.Brace)
             add(Action.Flee)
         }
@@ -98,8 +102,18 @@ class Engine(val content: ContentPack) {
         }
     }
 
+    /**
+     * Progression meta-actions are validated directly, not via legalActions —
+     * legalActions stays the combat/exploring verb set AND the softlock oracle.
+     */
+    private fun isPlayable(state: GameState, action: Action): Boolean = when (action) {
+        is Action.UnlockNode -> canUnlock(state, action.node)
+        Action.Respec -> canRespec(state)
+        else -> action in legalActions(state)
+    }
+
     fun step(state: GameState, action: Action): StepResult {
-        require(action in legalActions(state)) {
+        require(isPlayable(state, action)) {
             "Illegal action $action in mode ${state.mode} at ${state.currentRoom.value}"
         }
         val dice = Dice(state.rng)
@@ -151,10 +165,17 @@ class Engine(val content: ContentPack) {
             }
         }
 
-        Action.QuickStrike -> resolveCombat(state, dice, CombatChoice.QUICK)
-        Action.HeavyStrike -> resolveCombat(state, dice, CombatChoice.HEAVY)
-        Action.Brace -> resolveCombat(state, dice, CombatChoice.BRACE)
-        Action.Flee -> resolveCombat(state, dice, CombatChoice.FLEE)
+        Action.QuickStrike -> resolveCombat(state, dice, CombatChoice.Quick)
+        Action.HeavyStrike -> resolveCombat(state, dice, CombatChoice.Heavy)
+        Action.Brace -> resolveCombat(state, dice, CombatChoice.Brace)
+        Action.Flee -> resolveCombat(state, dice, CombatChoice.Flee)
+        is Action.UseAbility -> resolveCombat(state, dice, CombatChoice.Ability(content.abilities.getValue(action.ability)))
+
+        is Action.UnlockNode -> listOf(Event.NodeUnlocked(action.node))
+        Action.Respec -> {
+            val refunded = state.player.unlockedNodes.sumOf { content.nodes.getValue(it).cost }
+            listOf(Event.Respecced(refunded, respecCost(state)))
+        }
     }
 
     /**
@@ -165,7 +186,14 @@ class Engine(val content: ContentPack) {
      */
     private fun survivalTick(state: GameState, action: Action, actionEvents: List<Event>): List<Event> {
         if (content.meters.isEmpty()) return emptyList()
-        if (action == Action.Camp) return emptyList() // Camped restores; no burn while resting
+        // Survival meters track WORLD time, not combat time — combat has its own
+        // resource (stamina), and a long deep fight should not freeze you. Resting
+        // and menu meta-actions also do not burn the clock.
+        val burnsClock = when (action) {
+            Action.Look, Action.Search, is Action.Move, is Action.Take, is Action.Equip -> true
+            else -> false
+        }
+        if (!burnsClock) return emptyList()
 
         val values = mutableMapOf<MeterId, Int>()
         var chill = 0L
@@ -187,7 +215,35 @@ class Engine(val content: ContentPack) {
         }
     }
 
-    private enum class CombatChoice { QUICK, HEAVY, BRACE, FLEE }
+    private sealed interface CombatChoice {
+        data object Quick : CombatChoice
+        data object Heavy : CombatChoice
+        data object Brace : CombatChoice
+        data object Flee : CombatChoice
+        data class Ability(val def: com.cauldron.myriad.engine.model.AbilityDef) : CombatChoice
+    }
+
+    /** The kill sequence shared by basic strikes and ability strikes. */
+    private fun MutableList<Event>.addSlain(state: GameState, monsterDef: MonsterDef, dice: Dice) {
+        val gold = dice.roll(RngStream.LOOT, monsterDef.goldDrop)
+        add(Event.MonsterSlain(monsterDef.id, gold))
+        rollLoot(monsterDef, dice)?.let { add(Event.ItemDropped(monsterDef.id, it)) }
+        val gained = xpFor(monsterDef)
+        add(Event.XpGained(gained))
+        var total = state.player.xp + gained
+        var level = state.player.level
+        while (level < LEVEL_CAP && total >= xpToReach(level + 1)) {
+            level++
+            add(Event.LeveledUp(level, LEVEL_HP_GAIN, LEVEL_ATTACK_GAIN, LEVEL_DEFENSE_GAIN, LEVEL_SKILL_POINTS))
+        }
+        if (content.rooms.getValue(state.currentRoom).isGoal) add(Event.GameWon)
+    }
+
+    private fun playerCrit(state: GameState, dice: Dice, baseCrit: Boolean, abilityBonus: Int = 0): Boolean {
+        if (baseCrit) return true
+        val chance = critBonus(state) + abilityBonus
+        return chance > 0 && dice.chance(RngStream.COMBAT, chance)
+    }
 
     private fun resolveCombat(state: GameState, dice: Dice, choice: CombatChoice): List<Event> = buildList {
         val mode = state.mode as Mode.Combat
@@ -197,18 +253,23 @@ class Engine(val content: ContentPack) {
         val monsterDef = content.monsters.getValue(mode.monster)
         var monsterHp = state.roomStateFor(state.currentRoom, content).monsterHp ?: 0
         var playerHp = state.player.hp
+        val maxHp = effectiveMaxHp(state)
+        val maxStamina = effectiveMaxStamina(state)
         var stamina = mode.playerStamina
         var braced = mode.braced
         var intent = moveFor(monsterDef, mode.monsterIntent)
         var playerGauge: Int
         var monsterGauge = mode.monsterGauge
+        // Every player action ticks cooldowns down by one before any new one is set.
+        var cooldowns = mode.abilityCooldowns.mapValues { (_, t) -> (t - 1).coerceAtLeast(0) }
+            .filterValues { it > 0 }
 
         when (choice) {
-            CombatChoice.QUICK, CombatChoice.HEAVY -> {
-                val heavy = choice == CombatChoice.HEAVY
+            CombatChoice.Quick, CombatChoice.Heavy -> {
+                val heavy = choice == CombatChoice.Heavy
                 stamina -= if (heavy) STAMINA_HEAVY else STAMINA_QUICK
                 val roll = dice.roll(RngStream.COMBAT, 1..6)
-                val crit = roll == 6 || (heavy && roll == 5)
+                val crit = playerCrit(state, dice, baseCrit = roll == 6 || (heavy && roll == 5))
                 val damage = scaledDamage(
                     attack = playerAttack(state),
                     powerNum = if (heavy) HEAVY_POWER_NUM else QUICK_POWER_NUM,
@@ -221,23 +282,20 @@ class Engine(val content: ContentPack) {
                 add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy))
                 monsterHp -= damage
                 if (monsterHp <= 0) {
-                    val gold = dice.roll(RngStream.LOOT, monsterDef.goldDrop)
-                    add(Event.MonsterSlain(mode.monster, gold))
-                    rollLoot(monsterDef, dice)?.let { add(Event.ItemDropped(mode.monster, it)) }
-                    if (content.rooms.getValue(state.currentRoom).isGoal) add(Event.GameWon)
+                    addSlain(state, monsterDef, dice)
                     return@buildList
                 }
                 playerGauge = Mode.Combat.GAUGE_MAX - if (heavy) RECOVERY_HEAVY else RECOVERY_QUICK
             }
 
-            CombatChoice.BRACE -> {
+            CombatChoice.Brace -> {
                 add(Event.PlayerBraced)
                 braced = true
-                stamina = (stamina + STAMINA_BRACE_RESTORE).coerceAtMost(Mode.Combat.STAMINA_MAX)
+                stamina = (stamina + STAMINA_BRACE_RESTORE).coerceAtMost(maxStamina)
                 playerGauge = Mode.Combat.GAUGE_MAX - RECOVERY_BRACE
             }
 
-            CombatChoice.FLEE -> {
+            CombatChoice.Flee -> {
                 if (dice.chance(RngStream.COMBAT, FLEE_CHANCE_PERCENT)) {
                     add(Event.FleeSucceeded(state.lastRoom ?: content.startRoom))
                     return@buildList
@@ -245,11 +303,47 @@ class Engine(val content: ContentPack) {
                 add(Event.FleeFailed(mode.monster))
                 playerGauge = Mode.Combat.GAUGE_MAX - RECOVERY_FLEE_FAIL
             }
+
+            is CombatChoice.Ability -> {
+                val ability = choice.def
+                stamina -= ability.staminaCost
+                add(Event.AbilityUsed(ability.id))
+                when (val kind = ability.kind) {
+                    is com.cauldron.myriad.engine.model.AbilityKind.Strike -> {
+                        val roll = dice.roll(RngStream.COMBAT, 1..6)
+                        val crit = playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = kind.critBonus)
+                        val damage = scaledDamage(
+                            attack = playerAttack(state),
+                            powerNum = kind.powerNum,
+                            powerDen = kind.powerDen,
+                            roll = roll,
+                            defense = (monsterDef.defense - kind.defenseIgnored).coerceAtLeast(0),
+                            crit = crit,
+                            halved = false,
+                        )
+                        add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy = true))
+                        monsterHp -= damage
+                        if (monsterHp <= 0) {
+                            addSlain(state, monsterDef, dice)
+                            return@buildList
+                        }
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Heal -> {
+                        val healed = ((maxHp.toLong() * kind.percentNum / kind.percentDen).toInt())
+                            .coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
+                        playerHp += healed
+                        add(Event.PlayerHealed(healed))
+                    }
+                }
+                if (ability.cooldownTurns > 0) cooldowns = cooldowns + (ability.id to ability.cooldownTurns)
+                playerGauge = Mode.Combat.GAUGE_MAX - RECOVERY_ABILITY
+            }
         }
 
         // Advance time until the player is ready again. The monster's gauge may
         // wrap multiple times — each wrap executes the telegraphed intent and
         // draws the next one.
+        val reduction = damageReduction(state)
         var guard = 0
         while (playerGauge < Mode.Combat.GAUGE_MAX) {
             check(++guard <= ADVANCE_GUARD) { "ATB advancement runaway (speeds: player $PLAYER_SPEED, monster ${monsterDef.speed})" }
@@ -259,7 +353,7 @@ class Engine(val content: ContentPack) {
                 monsterGauge -= Mode.Combat.GAUGE_MAX
                 val roll = dice.roll(RngStream.COMBAT, 1..6)
                 val crit = roll == 6
-                val damage = scaledDamage(
+                val raw = scaledDamage(
                     attack = monsterDef.attack,
                     powerNum = intent.powerNum,
                     powerDen = intent.powerDen,
@@ -268,6 +362,7 @@ class Engine(val content: ContentPack) {
                     crit = crit,
                     halved = braced,
                 )
+                val damage = (raw - reduction).coerceAtLeast(1)
                 add(Event.MonsterStruckPlayer(mode.monster, intent.id, damage, crit, braced))
                 braced = false
                 playerHp -= damage
@@ -286,6 +381,7 @@ class Engine(val content: ContentPack) {
                 playerStamina = stamina,
                 braced = braced,
                 monsterIntent = intent.id,
+                abilityCooldowns = cooldowns,
             )
         )
     }
@@ -318,15 +414,23 @@ class Engine(val content: ContentPack) {
 
         is Event.MovedTo -> state.copy(lastRoom = state.currentRoom, currentRoom = event.room)
 
-        is Event.CombatStarted -> state.copy(mode = Mode.Combat(event.monster))
+        is Event.CombatStarted ->
+            state.copy(mode = Mode.Combat(event.monster, playerStamina = effectiveMaxStamina(state)))
 
         is Event.MonsterIntentDrawn -> {
             val mode = state.mode as? Mode.Combat
             if (mode != null) state.copy(mode = mode.copy(monsterIntent = event.move)) else state
         }
 
-        is Event.PlayerStruckMonster -> state.updateRoom(state.currentRoom) {
-            it.copy(monsterHp = ((it.monsterHp ?: 0) - event.damage).coerceAtLeast(0))
+        is Event.PlayerStruckMonster -> {
+            // Land a blow → train the equipped weapon family (use-texture).
+            val family = state.player.equipped?.let { content.items.getValue(it).family }
+            val trained = if (family.isNullOrEmpty()) state.player else {
+                state.player.copy(mastery = state.player.mastery + (family to ((state.player.mastery[family] ?: 0) + 1)))
+            }
+            state.copy(player = trained).updateRoom(state.currentRoom) {
+                it.copy(monsterHp = ((it.monsterHp ?: 0) - event.damage).coerceAtLeast(0))
+            }
         }
 
         is Event.MonsterSlain -> {
@@ -356,9 +460,51 @@ class Engine(val content: ContentPack) {
                         playerStamina = event.playerStamina,
                         braced = event.braced,
                         monsterIntent = event.monsterIntent,
+                        abilityCooldowns = event.abilityCooldowns,
                     )
                 )
             } else state
+        }
+
+        is Event.AbilityUsed -> state
+
+        is Event.PlayerHealed -> state.copy(
+            player = state.player.copy(hp = (state.player.hp + event.amount).coerceAtMost(effectiveMaxHp(state)))
+        )
+
+        is Event.XpGained -> state.copy(player = state.player.copy(xp = state.player.xp + event.amount))
+
+        is Event.LeveledUp -> {
+            val leveled = state.player.copy(
+                level = event.level,
+                maxHp = state.player.maxHp + event.hpGain,
+                baseAttack = state.player.baseAttack + event.attackGain,
+                baseDefense = state.player.baseDefense + event.defenseGain,
+                skillPoints = state.player.skillPoints + event.skillPoints,
+            )
+            // Leveling heals to full — a real moment of relief mid-delve.
+            val healed = leveled.copy(hp = state.copy(player = leveled).let { effectiveMaxHp(it) })
+            state.copy(player = healed)
+        }
+
+        is Event.NodeUnlocked -> {
+            val cost = content.nodes.getValue(event.node).cost
+            state.copy(
+                player = state.player.copy(
+                    unlockedNodes = state.player.unlockedNodes + event.node,
+                    skillPoints = (state.player.skillPoints - cost).coerceAtLeast(0),
+                )
+            )
+        }
+
+        is Event.Respecced -> {
+            val refunded = state.player.copy(
+                unlockedNodes = emptyList(),
+                skillPoints = state.player.skillPoints + event.refundedPoints,
+                gold = (state.player.gold - event.goldCost).coerceAtLeast(0),
+            )
+            // Respeccing away +maxHp nodes can lower the ceiling; clamp hp down.
+            state.copy(player = refunded.copy(hp = refunded.hp.coerceAtMost(effectiveMaxHp(state.copy(player = refunded)))))
         }
 
         is Event.MetersTicked -> state.copy(
@@ -366,7 +512,12 @@ class Engine(val content: ContentPack) {
             player = state.player.copy(hp = (state.player.hp - event.chillDamage).coerceAtLeast(0)),
         )
 
-        is Event.Camped -> state.copy(meters = state.meters + event.restored)
+        is Event.Camped -> {
+            // Rest restores meters AND closes wounds — the fight→camp→heal→descend
+            // loop that makes the deep Depths sustainable for careful delvers.
+            val rested = state.copy(meters = state.meters + event.restored)
+            rested.copy(player = rested.player.copy(hp = effectiveMaxHp(rested)))
+        }
 
         Event.PlayerDied -> state.copy(mode = Mode.Dead)
 
@@ -401,14 +552,89 @@ class Engine(val content: ContentPack) {
     private fun GameState.updateRoom(room: RoomId, transform: (RoomState) -> RoomState): GameState =
         copy(rooms = rooms + (room to transform(roomStateFor(room, content))))
 
+    // ── Derived stats (MASTER_PLAN §16.4) ───────────────────────────────────
+    // Level gains are STORED on PlayerState; constellation node bonuses and
+    // weapon mastery are DERIVED here, never stored — so respec just changes the
+    // unlocked-node list and every number follows.
+
+    private inline fun <reified E : com.cauldron.myriad.engine.model.NodeEffect> nodeSum(
+        state: GameState,
+        amount: (E) -> Int,
+    ): Int = state.player.unlockedNodes.sumOf { id ->
+        val effect = content.nodes[id]?.effect
+        if (effect is E) amount(effect) else 0
+    }
+
+    fun masteryBonus(state: GameState): Int {
+        val family = state.player.equipped?.let { content.items.getValue(it).family } ?: return 0
+        if (family.isEmpty()) return 0
+        val swings = state.player.mastery[family] ?: 0
+        return (swings / MASTERY_PER_RANK).coerceAtMost(MASTERY_CAP)
+    }
+
     fun playerAttack(state: GameState): Int =
-        state.player.baseAttack + (state.player.equipped?.let { content.items.getValue(it).attackBonus } ?: 0)
+        state.player.baseAttack +
+            (state.player.equipped?.let { content.items.getValue(it).attackBonus } ?: 0) +
+            nodeSum<com.cauldron.myriad.engine.model.NodeEffect.Attack>(state) { it.amount } +
+            masteryBonus(state)
 
     fun playerDefense(state: GameState): Int =
-        state.player.baseDefense + (state.player.equipped?.let { content.items.getValue(it).defenseBonus } ?: 0)
+        state.player.baseDefense +
+            (state.player.equipped?.let { content.items.getValue(it).defenseBonus } ?: 0) +
+            nodeSum<com.cauldron.myriad.engine.model.NodeEffect.Defense>(state) { it.amount }
+
+    fun effectiveMaxHp(state: GameState): Int =
+        state.player.maxHp + nodeSum<com.cauldron.myriad.engine.model.NodeEffect.MaxHp>(state) { it.amount }
+
+    fun effectiveMaxStamina(state: GameState): Int =
+        Mode.Combat.STAMINA_MAX + nodeSum<com.cauldron.myriad.engine.model.NodeEffect.MaxStamina>(state) { it.amount }
+
+    fun critBonus(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.Crit>(state) { it.percent }
+
+    fun damageReduction(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.DamageReduction>(state) { it.amount }
+
+    fun unlockedAbilities(state: GameState): List<com.cauldron.myriad.engine.model.AbilityDef> =
+        state.player.unlockedNodes.mapNotNull { id ->
+            (content.nodes[id]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantAbility)
+                ?.let { content.abilities[it.ability] }
+        }
+
+    fun hasSense(state: GameState, sense: com.cauldron.myriad.engine.model.SenseId): Boolean =
+        state.player.unlockedNodes.any {
+            (content.nodes[it]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantSense)?.sense == sense
+        }
+
+    // ── Progression queries (used by step, the UI, and the Gauntlet) ─────────
+
+    fun xpFor(monster: MonsterDef): Long =
+        (monster.maxHp / 3L) + monster.attack * 4L + monster.defense * 2L + 8L
+
+    /** Total XP needed to BE [level] (triangular curve). */
+    fun xpToReach(level: Int): Long = 18L * (level - 1) * level
+
+    fun canUnlock(state: GameState, nodeId: com.cauldron.myriad.engine.model.NodeId): Boolean {
+        if (state.mode is Mode.Dead || state.mode is Mode.Victory) return false
+        val node = content.nodes[nodeId] ?: return false
+        if (nodeId in state.player.unlockedNodes) return false
+        if (state.player.skillPoints < node.cost) return false
+        return node.prereqs.all { it in state.player.unlockedNodes }
+    }
+
+    fun unlockableNodes(state: GameState): List<com.cauldron.myriad.engine.model.NodeId> =
+        content.nodes.keys.filter { canUnlock(state, it) }
+
+    fun respecCost(state: GameState): Int = RESPEC_COST_PER_LEVEL * state.player.level
+
+    fun canRespec(state: GameState): Boolean =
+        state.mode is Mode.Exploring &&
+            content.rooms.getValue(state.currentRoom).haven &&
+            state.player.unlockedNodes.isNotEmpty() &&
+            state.player.gold >= respecCost(state)
 
     companion object {
-        const val STARTING_HP = 20
+        const val STARTING_HP = 26
         const val STARTING_ATTACK = 2
         const val STARTING_DEFENSE = 1
         const val FLEE_CHANCE_PERCENT = 50
@@ -426,6 +652,17 @@ class Engine(val content: ContentPack) {
         const val STAMINA_QUICK = 15
         const val STAMINA_HEAVY = 40
         const val STAMINA_BRACE_RESTORE = 25
+        const val RECOVERY_ABILITY = 1300
+
+        // Progression
+        const val MASTERY_PER_RANK = 12
+        const val MASTERY_CAP = 3
+        const val LEVEL_CAP = 99
+        const val LEVEL_HP_GAIN = 12
+        const val LEVEL_ATTACK_GAIN = 2
+        const val LEVEL_DEFENSE_GAIN = 1
+        const val LEVEL_SKILL_POINTS = 1
+        const val RESPEC_COST_PER_LEVEL = 50
 
         /** Strike power as attack × num/den. */
         const val QUICK_POWER_NUM = 7

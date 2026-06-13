@@ -21,3 +21,15 @@ value class MoveId(val value: String)
 @Serializable
 @JvmInline
 value class MeterId(val value: String)
+
+@Serializable
+@JvmInline
+value class NodeId(val value: String)
+
+@Serializable
+@JvmInline
+value class AbilityId(val value: String)
+
+@Serializable
+@JvmInline
+value class SenseId(val value: String)

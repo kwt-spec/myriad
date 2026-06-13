@@ -8,6 +8,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +63,7 @@ fun GameScreen(
     content: ContentPack,
     onAct: (Action) -> Unit,
     onNewRun: () -> Unit,
+    onOpenSkills: () -> Unit,
 ) {
     val game = playing.game
     val listState = rememberLazyListState()
@@ -91,7 +95,7 @@ fun GameScreen(
         EmberField(Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
-            StatusStrip(game, content)
+            StatusStrip(game, content, onOpenSkills)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             if (inCombat) {
@@ -119,7 +123,7 @@ fun GameScreen(
 }
 
 @Composable
-private fun StatusStrip(game: GameState, content: ContentPack) {
+private fun StatusStrip(game: GameState, content: ContentPack, onOpenSkills: () -> Unit) {
     val animatedHp by animateIntAsState(game.player.hp, tween(450), label = "hp")
     val animatedGold by animateIntAsState(game.player.gold, tween(450), label = "gold")
     val lowHp = game.player.hp <= game.player.maxHp / 4
@@ -174,10 +178,16 @@ private fun StatusStrip(game: GameState, content: ContentPack) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        // Level + skill button — the constellations live one tap away.
+        val hasPoints = game.player.skillPoints > 0
         Text(
-            text = "t${game.turn}",
+            text = "★${game.player.level}" + if (hasPoints) " ✦${game.player.skillPoints}" else "",
             style = style,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (hasPoints) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(onClick = onOpenSkills)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
 }

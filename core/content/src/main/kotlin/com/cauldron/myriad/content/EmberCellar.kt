@@ -171,11 +171,16 @@ object EmberCellar {
                 id = WARMTH,
                 name = "warmth",
                 glyph = "🔥",
-                cap = 20,
-                start = 20,
+                // Headroom for a deep descent: ~60 actions between camps (landings
+                // every 3rd floor, shrines every 5th) keeps survival a real but
+                // fair pressure rather than a per-room tax.
+                cap = 60,
+                start = 60,
                 burnPerAction = 1,
-                emptyDamagePerAction = 1,
+                emptyDamagePerAction = 2,
             ),
         ),
+        abilities = Constellations.abilities,
+        nodes = Constellations.nodes,
     )
 }

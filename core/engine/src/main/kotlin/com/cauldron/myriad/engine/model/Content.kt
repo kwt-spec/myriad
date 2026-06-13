@@ -94,6 +94,8 @@ data class ContentPack(
     val items: Map<ItemId, ItemDef>,
     val monsters: Map<MonsterId, MonsterDef>,
     val meters: Map<MeterId, MeterDef> = emptyMap(),
+    val abilities: Map<AbilityId, AbilityDef> = emptyMap(),
+    val nodes: Map<NodeId, ConstellationNodeDef> = emptyMap(),
 ) {
     companion object {
         const val GOLD_DROP_CAP = 1_000_000
@@ -179,6 +181,55 @@ data class ContentPack(
         val unreachable = rooms.keys - reachable
         if (unreachable.isNotEmpty()) {
             problems += "unreachable rooms: ${unreachable.joinToString { it.value }}"
+        }
+
+        for (ability in abilities.values) {
+            if (ability.staminaCost < 0) problems += "ability '${ability.id.value}': negative stamina cost"
+            if (ability.cooldownTurns < 0) problems += "ability '${ability.id.value}': negative cooldown"
+            if (ability.name.isBlank()) problems += "ability '${ability.id.value}': blank name"
+            when (val kind = ability.kind) {
+                is AbilityKind.Strike -> {
+                    if (kind.powerNum <= 0 || kind.powerDen <= 0) problems += "ability '${ability.id.value}': non-positive power"
+                    if (kind.defenseIgnored < 0) problems += "ability '${ability.id.value}': negative defenseIgnored"
+                }
+                is AbilityKind.Heal -> {
+                    if (kind.percentNum <= 0 || kind.percentDen <= 0) problems += "ability '${ability.id.value}': non-positive heal"
+                }
+            }
+        }
+
+        for (node in nodes.values) {
+            if (node.cost <= 0) problems += "node '${node.id.value}': cost must be positive"
+            if (node.constellation.isBlank()) problems += "node '${node.id.value}': blank constellation"
+            if (node.name.isBlank()) problems += "node '${node.id.value}': blank name"
+            for (prereq in node.prereqs) {
+                if (prereq !in nodes) problems += "node '${node.id.value}': missing prereq '${prereq.value}'"
+            }
+            when (val effect = node.effect) {
+                is NodeEffect.GrantAbility ->
+                    if (effect.ability !in abilities) problems += "node '${node.id.value}': grants missing ability '${effect.ability.value}'"
+                else -> {}
+            }
+        }
+        // Prereq graph must be acyclic (DFS three-colour).
+        val color = HashMap<NodeId, Int>()
+        fun cyclic(id: NodeId): Boolean {
+            when (color[id]) {
+                1 -> return true
+                2 -> return false
+            }
+            color[id] = 1
+            for (prereq in nodes[id]?.prereqs.orEmpty()) {
+                if (prereq in nodes && cyclic(prereq)) return true
+            }
+            color[id] = 2
+            return false
+        }
+        for (node in nodes.values) {
+            if (cyclic(node.id)) {
+                problems += "node '${node.id.value}': prerequisite cycle"
+                break
+            }
         }
 
         val goals = rooms.values.filter { it.isGoal }

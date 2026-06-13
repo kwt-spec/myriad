@@ -8,12 +8,20 @@ import kotlinx.serialization.Serializable
 data class PlayerState(
     val name: String,
     val hp: Int,
+    /** Stored stat: base + level gains. Constellation bonuses are DERIVED on top, never stored. */
     val maxHp: Int,
     val baseAttack: Int,
     val baseDefense: Int,
     val gold: Int,
     val inventory: List<ItemId>,
     val equipped: ItemId?,
+    // Progression (v4; defaults keep pre-v4 saves decoding):
+    val xp: Long = 0,
+    val level: Int = 1,
+    val skillPoints: Int = 0,
+    val unlockedNodes: List<NodeId> = emptyList(),
+    /** Use-texture: weapon-family slug → swings landed. Derives a small capped bonus. */
+    val mastery: Map<String, Int> = emptyMap(),
 )
 
 @Serializable
@@ -47,6 +55,8 @@ sealed interface Mode {
         val playerStamina: Int = STAMINA_MAX,
         val monsterIntent: MoveId = MoveId(""),
         val braced: Boolean = false,
+        /** Ability id → player-turns remaining before reuse. Resets each fight. */
+        val abilityCooldowns: Map<AbilityId, Int> = emptyMap(),
     ) : Mode {
         companion object {
             const val GAUGE_MAX = 1000

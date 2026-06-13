@@ -61,11 +61,42 @@ sealed interface Event {
         val playerStamina: Int,
         val braced: Boolean,
         val monsterIntent: MoveId,
+        val abilityCooldowns: Map<AbilityId, Int> = emptyMap(),
     ) : Event
+
+    @Serializable
+    @SerialName("ability_used")
+    data class AbilityUsed(val ability: AbilityId) : Event
+
+    @Serializable
+    @SerialName("player_healed")
+    data class PlayerHealed(val amount: Int) : Event
 
     @Serializable
     @SerialName("monster_slain")
     data class MonsterSlain(val monster: MonsterId, val gold: Int) : Event
+
+    @Serializable
+    @SerialName("xp_gained")
+    data class XpGained(val amount: Long) : Event
+
+    @Serializable
+    @SerialName("leveled_up")
+    data class LeveledUp(
+        val level: Int,
+        val hpGain: Int,
+        val attackGain: Int,
+        val defenseGain: Int,
+        val skillPoints: Int,
+    ) : Event
+
+    @Serializable
+    @SerialName("node_unlocked")
+    data class NodeUnlocked(val node: NodeId) : Event
+
+    @Serializable
+    @SerialName("respecced")
+    data class Respecced(val refundedPoints: Int, val goldCost: Int) : Event
 
     @Serializable
     @SerialName("player_died")

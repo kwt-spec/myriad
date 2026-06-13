@@ -6,6 +6,7 @@ import com.cauldron.myriad.engine.model.FeedKind
 import com.cauldron.myriad.engine.model.GameState
 import com.cauldron.myriad.engine.model.MonsterId
 import com.cauldron.myriad.engine.model.MoveId
+import com.cauldron.myriad.engine.model.Senses
 import com.cauldron.myriad.engine.model.roomStateFor
 
 /**
@@ -37,12 +38,20 @@ object Narrator {
         is Event.LookedAround, is Event.MovedTo, is Event.FleeSucceeded -> FeedKind.NARRATION
         is Event.CombatStarted, is Event.PlayerStruckMonster, is Event.MonsterStruckPlayer,
         Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
-        is Event.MonsterIntentDrawn, is Event.CombatTicked -> FeedKind.COMBAT
+        is Event.MonsterIntentDrawn, is Event.CombatTicked,
+        is Event.AbilityUsed, is Event.PlayerHealed -> FeedKind.COMBAT
         is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped -> FeedKind.LOOT
         is Event.Camped -> FeedKind.NARRATION
-        is Event.MetersTicked -> FeedKind.SYSTEM
+        is Event.MetersTicked, is Event.XpGained, is Event.LeveledUp,
+        is Event.NodeUnlocked, is Event.Respecced -> FeedKind.SYSTEM
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
     }
+
+    private fun hasDeathsight(state: GameState, content: ContentPack): Boolean =
+        state.player.unlockedNodes.any {
+            val e = content.nodes[it]?.effect
+            e is com.cauldron.myriad.engine.model.NodeEffect.GrantSense && e.sense == Senses.DEATHSIGHT
+        }
 
     /** Renders one event against the post-reduce state. Blank = no feed line. */
     fun narrate(event: Event, state: GameState, content: ContentPack): String = when (event) {
@@ -55,7 +64,20 @@ object Narrator {
             "${def.description}\n\nThe ${def.name} attacks!"
         }
 
-        is Event.MonsterIntentDrawn -> "⚠ ${telegraphOf(event.monster, event.move, content)}"
+        is Event.MonsterIntentDrawn -> {
+            val base = "⚠ ${telegraphOf(event.monster, event.move, content)}"
+            if (!hasDeathsight(state, content)) base else {
+                val monster = content.monsters.getValue(event.monster)
+                val move = monster.moves.firstOrNull { it.id == event.move } ?: monster.moves.first()
+                val hp = state.roomStateFor(state.currentRoom, content).monsterHp ?: 0
+                val severity = when {
+                    move.powerNum * 10 >= move.powerDen * 13 -> "a heavy"
+                    move.powerNum >= move.powerDen -> "a solid"
+                    else -> "a glancing"
+                }
+                "$base\n  ◐ Deathsight: ${monster.name} has $hp HP · ${severity} blow incoming."
+            }
+        }
 
         is Event.PlayerStruckMonster -> {
             val name = content.monsters.getValue(event.monster).name
@@ -79,7 +101,25 @@ object Narrator {
 
         Event.PlayerBraced -> "You plant your feet and raise your guard."
 
+        is Event.AbilityUsed -> "You unleash ${content.abilities.getValue(event.ability).name}!"
+
+        is Event.PlayerHealed ->
+            if (event.amount <= 0) "" else "Warmth floods back into you — you recover ${event.amount} HP."
+
         is Event.CombatTicked -> "" // bookkeeping only — no feed line
+
+        is Event.XpGained -> "" // shown in the status strip, not the feed
+
+        is Event.LeveledUp ->
+            "★ You reach level ${event.level}. (+${event.hpGain} vigour, +${event.attackGain} might, " +
+                "+${event.defenseGain} guard, +${event.skillPoints} skill point) — and your wounds close."
+
+        is Event.NodeUnlocked ->
+            "A new star kindles in your constellation: ${content.nodes.getValue(event.node).name}."
+
+        is Event.Respecced ->
+            "You unmake your constellation, reclaiming ${event.refundedPoints} points " +
+                "(${event.goldCost} gold spent on the reflection)."
 
         is Event.MonsterSlain -> {
             val name = content.monsters.getValue(event.monster).name

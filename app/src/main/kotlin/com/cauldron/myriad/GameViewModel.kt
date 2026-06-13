@@ -33,10 +33,25 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             val chips: List<Chip>,
             /** Events from the step that produced this state — drives popups/shake/haptics. */
             val lastEvents: List<Event> = emptyList(),
+            val showSkills: Boolean = false,
+            val nodes: List<NodeRow> = emptyList(),
+            val canRespec: Boolean = false,
+            val respecCost: Int = 0,
         ) : UiState
     }
 
     data class Chip(val action: Action, val label: String)
+
+    enum class NodeStatus { OWNED, AFFORDABLE, LOCKED }
+
+    data class NodeRow(
+        val id: com.cauldron.myriad.engine.model.NodeId,
+        val name: String,
+        val description: String,
+        val constellation: String,
+        val cost: Int,
+        val status: NodeStatus,
+    )
 
     val content = EmberCellar.pack
     private val engine = Engine(content)
@@ -92,10 +107,59 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         present(result.state, result.events)
     }
 
-    private fun present(game: GameState, events: List<Event> = emptyList()) {
-        _ui.value = UiState.Playing(game, chipsFor(game), events)
+    fun openSkills() {
+        (_ui.value as? UiState.Playing)?.let { _ui.value = it.copy(showSkills = true) }
+    }
+
+    fun closeSkills() {
+        (_ui.value as? UiState.Playing)?.let { _ui.value = it.copy(showSkills = false) }
+    }
+
+    fun unlockNode(id: com.cauldron.myriad.engine.model.NodeId) {
+        val current = (_ui.value as? UiState.Playing) ?: return
+        if (!engine.canUnlock(current.game, id)) return
+        val result = engine.step(current.game, Action.UnlockNode(id))
+        present(result.state, result.events, showSkills = true)
+    }
+
+    fun respec() {
+        val current = (_ui.value as? UiState.Playing) ?: return
+        if (!engine.canRespec(current.game)) return
+        val result = engine.step(current.game, Action.Respec)
+        present(result.state, result.events, showSkills = true)
+    }
+
+    private fun present(game: GameState, events: List<Event> = emptyList(), showSkills: Boolean = false) {
+        _ui.value = UiState.Playing(
+            game = game,
+            chips = chipsFor(game),
+            lastEvents = events,
+            showSkills = showSkills,
+            nodes = nodeRows(game),
+            canRespec = engine.canRespec(game),
+            respecCost = engine.respecCost(game),
+        )
         pendingSave.value = SaveCodec.fresh(game)
     }
+
+    private fun nodeRows(game: GameState): List<NodeRow> =
+        content.nodes.values
+            .sortedWith(compareBy({ it.constellation }, { it.cost }, { it.name }))
+            .map { def ->
+                val owned = def.id in game.player.unlockedNodes
+                NodeRow(
+                    id = def.id,
+                    name = def.name,
+                    description = def.description,
+                    constellation = def.constellation,
+                    cost = def.cost,
+                    status = when {
+                        owned -> NodeStatus.OWNED
+                        engine.canUnlock(game, def.id) -> NodeStatus.AFFORDABLE
+                        else -> NodeStatus.LOCKED
+                    },
+                )
+            }
 
     /** OXO OS kills backgrounded apps eagerly; onStop is our last reliable moment. */
     fun flushSaveBlocking() {
@@ -115,11 +179,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     Action.HeavyStrike -> "Heavy strike"
                     Action.Brace -> "Brace"
                     Action.Flee -> "Flee"
+                    is Action.UseAbility -> "✦ ${content.abilities.getValue(action.ability).name}"
                     is Action.Move ->
                         content.rooms.getValue(game.currentRoom)
                             .exits.firstOrNull { it.to == action.to }?.label ?: "Go"
                     is Action.Take -> "Take ${content.items.getValue(action.item).name}"
                     is Action.Equip -> "Wield ${content.items.getValue(action.item).name}"
+                    is Action.UnlockNode, Action.Respec -> "" // never chips
                 },
             )
         }

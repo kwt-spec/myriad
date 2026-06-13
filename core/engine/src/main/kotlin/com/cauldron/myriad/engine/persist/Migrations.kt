@@ -17,10 +17,16 @@ object Migrations {
      *
      * v2 → v3 (M1b, meters): `GameState.meters` added; defaults to empty and
      * `meterFor` seeds reads at each meter's start value, so the stamp suffices.
+     *
+     * v3 → v4 (M1c, progression): `PlayerState` gained xp/level/skillPoints/
+     * unlockedNodes/mastery and `Mode.Combat` gained abilityCooldowns; all have
+     * defaults (level 1, no xp, no nodes), so the lenient decode fills them and
+     * the stamp suffices.
      */
     fun migrate(save: SaveFile): SaveFile = when (save.formatVersion) {
         1 -> migrate(save.copy(formatVersion = 2))
         2 -> migrate(save.copy(formatVersion = 3))
+        3 -> migrate(save.copy(formatVersion = 4))
         SaveCodec.FORMAT_VERSION -> save
         else -> throw SaveCodec.CorruptSaveException(
             "no migration path from save format ${save.formatVersion}"

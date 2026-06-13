@@ -88,6 +88,29 @@ class MigrationTest {
     }
 
     @Test
+    fun `v3 fixtures chain to current with level-1 progression defaults`() {
+        // frostbitten world matches the fixture's generator (has the warmth meter).
+        val frostEngine = Engine(TestWorlds.frostbitten(cap = 6))
+        val exploring = SaveCodec.decode(golden("v3-exploring.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, exploring.formatVersion, "v3 must chain 3→4")
+        assertIs<Mode.Exploring>(exploring.state.mode)
+        // Progression fields arrive at their defaults.
+        assertEquals(1, exploring.state.player.level)
+        assertEquals(0L, exploring.state.player.xp)
+        assertEquals(0, exploring.state.player.skillPoints)
+        assertTrue(exploring.state.player.unlockedNodes.isEmpty())
+        assertTrue(exploring.state.player.mastery.isEmpty())
+        frostEngine.step(exploring.state, Action.Look) // must play on
+
+        val combat = SaveCodec.decode(golden("v3-combat.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, combat.formatVersion)
+        val mode = assertIs<Mode.Combat>(combat.state.mode)
+        assertTrue(mode.abilityCooldowns.isEmpty(), "migrated combat has no cooldowns")
+        val finished = fightSmart(frostEngine, combat.state)
+        assertTrue(finished.mode is Mode.Exploring || finished.mode is Mode.Dead)
+    }
+
+    @Test
     fun `v2 saves pass through migration unchanged`() {
         val state = engine.newGame(11, "Hero")
         val save = SaveCodec.fresh(state)

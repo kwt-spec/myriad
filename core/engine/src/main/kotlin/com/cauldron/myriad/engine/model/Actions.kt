@@ -43,6 +43,23 @@ sealed interface Action {
     data object Brace : Action
 
     @Serializable
+    @SerialName("ability")
+    data class UseAbility(val ability: AbilityId) : Action
+
+    @Serializable
     @SerialName("flee")
     data object Flee : Action
+
+    /**
+     * Meta-actions (progression). Validated by the engine directly, NOT via
+     * legalActions — that stays the combat/exploring verb set and the softlock
+     * oracle (empty ⇔ terminal must keep holding).
+     */
+    @Serializable
+    @SerialName("unlock_node")
+    data class UnlockNode(val node: NodeId) : Action
+
+    @Serializable
+    @SerialName("respec")
+    data object Respec : Action
 }
