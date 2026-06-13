@@ -190,15 +190,18 @@ object Hundredfold {
         "ember-eyed", "molten", "pyre-born", "void-singed", "hush-touched",
     )
 
-    const val FLOORS = 10
+    /** The Ember Depths run a hundred floors deep (MASTER_PLAN §16 — hundredfold). */
+    const val FLOORS = 100
 
     fun monsterIdAt(depth: Int): MonsterId =
         if (depth % 2 == 1) MonsterId("rat_d$depth") else MonsterId("wisp_d$depth")
 
+    private fun adjFor(depth: Int): String = DEPTH_ADJ[(depth - 1) % DEPTH_ADJ.size]
+
     fun depthMonsters(allItems: Map<ItemId, ItemDef>): Map<MonsterId, MonsterDef> {
         val out = LinkedHashMap<MonsterId, MonsterDef>()
         for (depth in 1..FLOORS) {
-            val adj = DEPTH_ADJ[depth - 1]
+            val adj = adjFor(depth)
             val id = monsterIdAt(depth)
             out[id] = if (depth % 2 == 1) {
                 MonsterDef(
@@ -243,7 +246,8 @@ object Hundredfold {
     /** Each floor themes to a different weapon family, for variety on the way down. */
     fun familyForDepth(depth: Int): String = FAMILY_SLUGS[(depth - 1) % FAMILY_SLUGS.size]
 
-    fun tierForDepth(depth: Int): Int = ((depth + 1) / 2).coerceIn(1, 5)
+    /** Tiers stretch across the whole descent: floors 1–20 → t1 … 81–100 → t5. */
+    fun tierForDepth(depth: Int): Int = ((depth - 1) * 5 / FLOORS + 1).coerceIn(1, 5)
 
     private fun bucket(allItems: Map<ItemId, ItemDef>, family: String, tier: Int): List<ItemDef> {
         val exact = allItems.values.filter { it.family == family && it.tier == tier }
@@ -262,6 +266,22 @@ object Hundredfold {
     fun landingId(depth: Int) = RoomId("depths_landing_$depth")
     fun denId(depth: Int) = RoomId("depths_den_$depth")
     fun hoardId(depth: Int) = RoomId("depths_hoard_$depth")
+    fun galleryId(depth: Int) = RoomId("depths_gallery_$depth")
+    fun shrineId(depth: Int) = RoomId("depths_shrine_$depth")
+
+    /** Even floors grow a gallery (a cache side-room). */
+    fun hasGallery(depth: Int): Boolean = depth % 2 == 0
+
+    /** Every fifth floor holds a shrine — an extra ember-camp, off the den. */
+    fun hasShrine(depth: Int): Boolean = depth % 5 == 0
+
+    /** Landing is a haven every third floor (in addition to shrine-camps). */
+    fun landingIsHaven(depth: Int): Boolean = depth % 3 == 0
+
+    fun roomsOnFloor(depth: Int): Int =
+        3 + (if (hasGallery(depth)) 1 else 0) + (if (hasShrine(depth)) 1 else 0)
+
+    fun generatedRoomCount(): Int = (1..FLOORS).sumOf { roomsOnFloor(it) }
 
     private val LANDING_FLAVOR = listOf(
         "The stair ends in a chamber of warm brick.",
@@ -284,14 +304,18 @@ object Hundredfold {
             } else {
                 ExitDef("Up — back toward floor ${depth - 1}", hoardId(depth - 1))
             }
-            val haven = depth % 3 == 0
+            val haven = landingIsHaven(depth)
 
             out[landingId(depth)] = RoomDef(
                 id = landingId(depth),
                 name = "Ember Depths — Floor $depth",
-                description = LANDING_FLAVOR[depth - 1] +
+                description = LANDING_FLAVOR[(depth - 1) % LANDING_FLAVOR.size] +
                     if (haven) " A niche of banked embers glows here, kept by no one." else "",
-                exits = listOf(upExit, ExitDef("Onward — a den that smells of singed fur", denId(depth))),
+                exits = buildList {
+                    add(upExit)
+                    add(ExitDef("Onward — a den that smells of singed fur", denId(depth)))
+                    if (hasGallery(depth)) add(ExitDef("Aside — a low gallery of cached ash", galleryId(depth)))
+                },
                 haven = haven,
                 campText = if (haven) {
                     "You settle into the ember niche of floor $depth and let the banked heat undo " +
@@ -299,17 +323,47 @@ object Hundredfold {
                 } else null,
             )
 
+            if (hasGallery(depth)) {
+                // Cache side-room: a dead end with a tier-true find, no monster.
+                val galleryTier = tierForDepth(depth)
+                val galleryCandidates = bucket(allItems, familyForDepth(depth), galleryTier)
+                out[galleryId(depth)] = RoomDef(
+                    id = galleryId(depth),
+                    name = "Gallery — Floor $depth",
+                    description = "A long, low gallery where the diggers of floor $depth stacked what " +
+                        "they meant to come back for. Most is ash now. Most.",
+                    exits = listOf(ExitDef("Back — to the landing", landingId(depth))),
+                    hiddenItem = galleryCandidates[(depth * 7) % galleryCandidates.size].id,
+                    searchText = "You rake through the cached ash and lift something still whole.",
+                )
+            }
+
             out[denId(depth)] = RoomDef(
                 id = denId(depth),
                 name = "Den — Floor $depth",
                 description = "Bones and slag are heaped in corners. Something lives here, and the " +
                     "warmth of floor $depth has made it strong.",
-                exits = listOf(
-                    ExitDef("Back — to the landing", landingId(depth)),
-                    ExitDef("Through — toward a glint of metal", hoardId(depth)),
-                ),
+                exits = buildList {
+                    add(ExitDef("Back — to the landing", landingId(depth)))
+                    add(ExitDef("Through — toward a glint of metal", hoardId(depth)))
+                    if (hasShrine(depth)) add(ExitDef("Aside — a still alcove, oddly warm", shrineId(depth)))
+                },
                 monster = monsterIdAt(depth),
             )
+
+            if (hasShrine(depth)) {
+                // Shrine: an extra ember-camp, keeping deep delving survivable.
+                out[shrineId(depth)] = RoomDef(
+                    id = shrineId(depth),
+                    name = "Shrine — Floor $depth",
+                    description = "A still alcove where someone long ago banked a fire and never let it " +
+                        "die. The coals of floor $depth still breathe, faintly, in the dark.",
+                    exits = listOf(ExitDef("Back — to the den", denId(depth))),
+                    haven = true,
+                    campText = "You feed the shrine-coals of floor $depth and warm yourself at a fire " +
+                        "older than your descent. For a moment the deep is almost kind.",
+                )
+            }
 
             // Hoard caches run one tier above the floor: what the dead delvers
             // could not carry up is worth carrying up.

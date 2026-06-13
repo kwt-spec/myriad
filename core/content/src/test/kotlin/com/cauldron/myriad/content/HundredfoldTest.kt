@@ -31,20 +31,20 @@ class HundredfoldTest {
         }
     }
 
-    private fun locateDoc(): java.io.File {
+    private fun locateDoc(name: String): java.io.File {
         // Tests may run from the module dir or the repo root; walk up to find it.
         var dir: java.io.File? = java.io.File("").absoluteFile
         while (dir != null) {
-            val candidate = java.io.File(dir, "docs/ITEMS.md")
+            val candidate = java.io.File(dir, "docs/$name")
             if (candidate.exists()) return candidate
             dir = dir.parentFile
         }
-        return java.io.File("docs/ITEMS.md")
+        return java.io.File("docs/$name")
     }
 
     @Test
-    fun `the documented table matches the generated reality`() {
-        val doc = locateDoc()
+    fun `the documented item table matches the generated reality`() {
+        val doc = locateDoc("ITEMS.md")
         assertTrue(doc.exists(), "docs/ITEMS.md must exist (searched up from ${java.io.File("").absolutePath})")
         val text = doc.readText()
         assertTrue("${Hundredfold.FAMILY_FLOOR}" in text, "doc must state the binding floor")
@@ -56,6 +56,17 @@ class HundredfoldTest {
         }
         val total = Hundredfold.familyCounts().values.sum()
         assertTrue("$total" in text, "doc must state the total weapon count $total")
+    }
+
+    @Test
+    fun `the documented world matches the generated reality`() {
+        val doc = locateDoc("WORLD.md")
+        assertTrue(doc.exists(), "docs/WORLD.md must exist")
+        val text = doc.readText()
+        val rooms = EmberCellar.pack.rooms.size
+        for (number in listOf(Hundredfold.FLOORS, Hundredfold.generatedRoomCount(), rooms, EmberCellar.pack.monsters.size)) {
+            assertTrue("$number" in text, "WORLD.md must state $number")
+        }
     }
 
     @Test
@@ -86,17 +97,25 @@ class HundredfoldTest {
     @Test
     fun `the depths exist, scale, and end at the First Ember`() {
         val pack = EmberCellar.pack
-        assertEquals(4 + 3 * Hundredfold.FLOORS, pack.rooms.size, "4 handcrafted + 30 generated rooms")
-        assertEquals(2 + Hundredfold.FLOORS, pack.monsters.size, "2 handcrafted + 10 depth variants")
+        assertEquals(100, Hundredfold.FLOORS, "the descent is a hundred floors deep")
+        assertEquals(4 + Hundredfold.generatedRoomCount(), pack.rooms.size, "4 handcrafted + generated depths rooms")
+        assertTrue(pack.rooms.size >= 300, "hundredfold rooms: only ${pack.rooms.size}")
+        assertEquals(2 + Hundredfold.FLOORS, pack.monsters.size, "2 handcrafted + one den variant per floor")
 
         // Monster threat rises with depth.
         val hps = (1..Hundredfold.FLOORS).map { pack.monsters.getValue(Hundredfold.monsterIdAt(it)).maxHp }
         assertTrue(hps.first() < hps.last(), "depth must escalate: $hps")
 
-        // Camps every third floor; capstone at the bottom.
-        for (depth in listOf(3, 6, 9)) {
+        // Camps every third floor (landings) and every fifth (shrines); capstone at the bottom.
+        for (depth in listOf(3, 6, 9, 99)) {
             assertTrue(pack.rooms.getValue(Hundredfold.landingId(depth)).haven, "floor $depth landing is a haven")
         }
+        for (depth in listOf(5, 10, 100)) {
+            val shrine = pack.rooms.getValue(Hundredfold.shrineId(depth))
+            assertTrue(shrine.haven, "floor $depth shrine is a camp")
+        }
+        assertTrue(Hundredfold.galleryId(2) in pack.rooms, "even floors grow a gallery")
+        assertTrue(Hundredfold.galleryId(3) !in pack.rooms, "odd floors have no gallery")
         assertEquals(
             Hundredfold.FIRST_EMBER,
             pack.rooms.getValue(Hundredfold.hoardId(Hundredfold.FLOORS)).hiddenItem,
