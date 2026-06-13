@@ -165,7 +165,7 @@ object EmberCellar {
                         .map { LootEntry(it.id, 1) },
                 ),
             ),
-        ) + Hundredfold.depthMonsters(hundredfoldItems),
+        ) + Bestiary.all(hundredfoldItems),
         meters = mapOf(
             WARMTH to MeterDef(
                 id = WARMTH,

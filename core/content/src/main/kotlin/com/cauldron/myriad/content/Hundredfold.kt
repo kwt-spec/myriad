@@ -3,12 +3,7 @@ package com.cauldron.myriad.content
 import com.cauldron.myriad.engine.model.ExitDef
 import com.cauldron.myriad.engine.model.ItemDef
 import com.cauldron.myriad.engine.model.ItemId
-import com.cauldron.myriad.engine.model.LootEntry
-import com.cauldron.myriad.engine.model.LootTable
-import com.cauldron.myriad.engine.model.MonsterDef
 import com.cauldron.myriad.engine.model.MonsterId
-import com.cauldron.myriad.engine.model.MoveDef
-import com.cauldron.myriad.engine.model.MoveId
 import com.cauldron.myriad.engine.model.RoomDef
 import com.cauldron.myriad.engine.model.RoomId
 
@@ -183,65 +178,13 @@ object Hundredfold {
         tier = 5,
     )
 
-    // ── Monster variants ─────────────────────────────────────────────────────
-
-    private val DEPTH_ADJ = listOf(
-        "ashen", "sooty", "cindered", "charred", "smoldering",
-        "ember-eyed", "molten", "pyre-born", "void-singed", "hush-touched",
-    )
+    // ── The descent ──────────────────────────────────────────────────────────
 
     /** The Ember Depths run a hundred floors deep (MASTER_PLAN §16 — hundredfold). */
     const val FLOORS = 100
 
-    fun monsterIdAt(depth: Int): MonsterId =
-        if (depth % 2 == 1) MonsterId("rat_d$depth") else MonsterId("wisp_d$depth")
-
-    private fun adjFor(depth: Int): String = DEPTH_ADJ[(depth - 1) % DEPTH_ADJ.size]
-
-    fun depthMonsters(allItems: Map<ItemId, ItemDef>): Map<MonsterId, MonsterDef> {
-        val out = LinkedHashMap<MonsterId, MonsterDef>()
-        for (depth in 1..FLOORS) {
-            val adj = adjFor(depth)
-            val id = monsterIdAt(depth)
-            out[id] = if (depth % 2 == 1) {
-                MonsterDef(
-                    id = id,
-                    name = "$adj cinder rat",
-                    description = "A $adj kin of the cellar rats, fattened on the heat of floor $depth. " +
-                        "Its coals burn brighter down here.",
-                    maxHp = 8 + 4 * depth,
-                    attack = 3 + depth,
-                    defense = 1 + depth / 3,
-                    speed = 80 + 4 * depth,
-                    moves = listOf(
-                        MoveDef(MoveId("lunge"), "lunge", "It coils low, tail lashing the hot ash.", 7, 10, 3),
-                        MoveDef(MoveId("gnaw"), "gnaw", "It bares teeth the color of clinker.", 10, 10, 4),
-                        MoveDef(MoveId("burst"), "ember burst", "Heat rolls off it in slow, hungry waves.", 16, 10, 2),
-                    ),
-                    goldDrop = depth..(2 + 4 * depth),
-                    loot = lootFor(depth, allItems),
-                )
-            } else {
-                MonsterDef(
-                    id = id,
-                    name = "$adj wisp",
-                    description = "A $adj mote of living fire, quicker and angrier than the ones above. " +
-                        "Floor $depth feeds it well.",
-                    maxHp = 5 + 2 * depth,
-                    attack = 2 + (2 * depth) / 3,
-                    defense = depth / 4,
-                    speed = 240,
-                    moves = listOf(
-                        MoveDef(MoveId("flicker"), "flicker", "It gutters and streaks sideways, trailing white sparks.", 6, 10, 3),
-                        MoveDef(MoveId("scorch"), "scorch", "It flares painfully bright.", 12, 10, 1),
-                    ),
-                    goldDrop = depth..(1 + 3 * depth),
-                    loot = lootFor(depth, allItems),
-                )
-            }
-        }
-        return out
-    }
+    /** The den-dweller of a floor is drawn from the generated [Bestiary]. */
+    fun monsterIdAt(depth: Int): MonsterId = Bestiary.denSpeciesId(depth)
 
     /** Each floor themes to a different weapon family, for variety on the way down. */
     fun familyForDepth(depth: Int): String = FAMILY_SLUGS[(depth - 1) % FAMILY_SLUGS.size]
@@ -252,13 +195,6 @@ object Hundredfold {
     private fun bucket(allItems: Map<ItemId, ItemDef>, family: String, tier: Int): List<ItemDef> {
         val exact = allItems.values.filter { it.family == family && it.tier == tier }
         return exact.ifEmpty { allItems.values.filter { it.family == family } }
-    }
-
-    private fun lootFor(depth: Int, allItems: Map<ItemId, ItemDef>): LootTable {
-        val entries = bucket(allItems, familyForDepth(depth), tierForDepth(depth))
-            .take(30)
-            .map { LootEntry(it.id, 1) }
-        return LootTable(chancePercent = 35, entries = entries)
     }
 
     // ── The Ember Depths ──────────────────────────────────────────────────────

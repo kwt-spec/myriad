@@ -35,16 +35,16 @@ to grow, not a gate. The descent ends at the **First Ember** capstone on floor 1
 | Generated depths rooms | 370 |
 | Handcrafted rooms | 4 |
 | **Total rooms** | **374** |
-| Den monster variants (one per floor) | 100 |
-| **Total monsters** (incl. 2 handcrafted) | **102** |
+| **Total monsters** (the bestiary + 2 handcrafted) | **842** |
 | Galleries (even floors) | 50 |
 | Shrine-camps (every 5th floor) | 20 |
 
-Depth scales monster HP, attack, and speed by floor; loot tier stretches across the
-whole descent (floors 1–20 → tier 1 … 81–100 → tier 5). Survival pressure (the
-warmth meter) is real between camps, and camps are frequent enough — landings every
-third floor, shrines every fifth — that attentive delving stays sustainable while
-careless delving still kills.
+Each floor's den draws a depth-appropriate creature from the generated bestiary
+(see `docs/BESTIARY.md` — 840 species), so the descent shows a real menagerie
+rather than one scaling monster. Loot follows the species' tier. Survival pressure
+(the warmth meter) is real between camps, and camps are frequent enough — landings
+every third floor, shrines every fifth — that attentive delving stays sustainable
+while careless delving still kills.
 
 ## Raising the ceiling
 

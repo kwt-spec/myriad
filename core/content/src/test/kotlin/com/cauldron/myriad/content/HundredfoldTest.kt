@@ -100,11 +100,14 @@ class HundredfoldTest {
         assertEquals(100, Hundredfold.FLOORS, "the descent is a hundred floors deep")
         assertEquals(4 + Hundredfold.generatedRoomCount(), pack.rooms.size, "4 handcrafted + generated depths rooms")
         assertTrue(pack.rooms.size >= 300, "hundredfold rooms: only ${pack.rooms.size}")
-        assertEquals(2 + Hundredfold.FLOORS, pack.monsters.size, "2 handcrafted + one den variant per floor")
+        assertEquals(2 + Bestiary.speciesCount(), pack.monsters.size, "2 handcrafted + the full bestiary")
 
-        // Monster threat rises with depth.
+        // Each floor's den draws a real bestiary species, and threat rises with depth.
+        for (depth in 1..Hundredfold.FLOORS) {
+            assertTrue(Hundredfold.monsterIdAt(depth) in pack.monsters, "floor $depth den species must exist")
+        }
         val hps = (1..Hundredfold.FLOORS).map { pack.monsters.getValue(Hundredfold.monsterIdAt(it)).maxHp }
-        assertTrue(hps.first() < hps.last(), "depth must escalate: $hps")
+        assertTrue(hps.first() < hps.last(), "depth must escalate: ${hps.first()}..${hps.last()}")
 
         // Camps every third floor (landings) and every fifth (shrines); capstone at the bottom.
         for (depth in listOf(3, 6, 9, 99)) {
@@ -122,14 +125,13 @@ class HundredfoldTest {
             "the First Ember waits at the bottom",
         )
 
-        // Every depth variant drops tier-true loot.
+        // Every floor's den-dweller drops coherent, single-tier loot.
         for (depth in 1..Hundredfold.FLOORS) {
             val monster = pack.monsters.getValue(Hundredfold.monsterIdAt(depth))
-            val loot = checkNotNull(monster.loot) { "depth $depth variant must carry loot" }
-            assertTrue(loot.entries.isNotEmpty() && loot.entries.size <= 30)
-            for (entry in loot.entries) {
-                assertEquals(Hundredfold.tierForDepth(depth), pack.items.getValue(entry.item).tier, "depth $depth loot off-tier")
-            }
+            val loot = checkNotNull(monster.loot) { "floor $depth den must carry loot" }
+            assertTrue(loot.entries.isNotEmpty() && loot.entries.size <= 24, "floor $depth loot size ${loot.entries.size}")
+            val tiers = loot.entries.map { pack.items.getValue(it.item).tier }.toSet()
+            assertEquals(1, tiers.size, "floor $depth loot mixes item tiers: $tiers")
         }
     }
 
