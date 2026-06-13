@@ -6,9 +6,18 @@ data class ItemDef(
     val description: String,
     val attackBonus: Int = 0,
     val defenseBonus: Int = 0,
+    /** Family tag for the Hundredfold floors ("dagger", "sword", "staff", …). */
+    val family: String = "",
+    /** Generation tier 1..5; drives loot-table assignment and stat envelopes. */
+    val tier: Int = 1,
 ) {
     val isEquippable: Boolean get() = attackBonus != 0 || defenseBonus != 0
 }
+
+data class LootEntry(val item: ItemId, val weight: Int)
+
+/** Rolled on MonsterSlain from the LOOT stream: chance gate, then weighted pick. */
+data class LootTable(val chancePercent: Int, val entries: List<LootEntry>)
 
 /**
  * One telegraphed monster move. Damage = attack × powerNum/powerDen, fed into
@@ -35,6 +44,7 @@ data class MonsterDef(
     val speed: Int,
     val moves: List<MoveDef>,
     val goldDrop: IntRange,
+    val loot: LootTable? = null,
 )
 
 data class ExitDef(val label: String, val to: RoomId)
@@ -132,6 +142,17 @@ data class ContentPack(
             }
             if (monster.moves.sumOf { it.weight.toLong() } > 1_000_000L) {
                 problems += "monster '${monster.id.value}': move weights sum too large"
+            }
+            monster.loot?.let { loot ->
+                if (loot.chancePercent !in 1..100) problems += "monster '${monster.id.value}': loot chance outside 1..100"
+                if (loot.entries.isEmpty()) problems += "monster '${monster.id.value}': empty loot table"
+                for (entry in loot.entries) {
+                    if (entry.weight <= 0) problems += "monster '${monster.id.value}': non-positive loot weight"
+                    if (entry.item !in items) problems += "monster '${monster.id.value}': loot references missing item '${entry.item.value}'"
+                }
+                if (loot.entries.sumOf { it.weight.toLong() } > 1_000_000L) {
+                    problems += "monster '${monster.id.value}': loot weights sum too large"
+                }
             }
         }
 

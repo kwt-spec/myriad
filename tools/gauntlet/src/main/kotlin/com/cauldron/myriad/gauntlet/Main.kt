@@ -27,7 +27,13 @@ fun main(args: Array<String>) {
     var maxGold = 0
     var totalGold = 0L
 
-    println("The Gauntlet — random bot · ${EmberCellar.pack.version} · $runs runs · max $maxTurns turns")
+    val pack = EmberCellar.pack
+    val weaponsByFamily = pack.items.values.filter { it.family.isNotEmpty() }
+        .groupingBy { it.family }.eachCount().toSortedMap()
+    println("The Gauntlet — random bot · ${pack.version} · $runs runs · max $maxTurns turns")
+    println("world: ${pack.rooms.size} rooms · ${pack.monsters.size} monsters · ${pack.items.size} items")
+    println("weapons: ${weaponsByFamily.values.sum()} across ${weaponsByFamily.size} families " +
+        "(${weaponsByFamily.entries.joinToString(" ") { "${it.key}=${it.value}" }})")
 
     for (run in 0 until runs) {
         val seed = (seeder.nextUInt().toLong() shl 32) or seeder.nextUInt().toLong()

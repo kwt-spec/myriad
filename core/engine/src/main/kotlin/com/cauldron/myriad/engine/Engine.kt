@@ -223,6 +223,7 @@ class Engine(val content: ContentPack) {
                 if (monsterHp <= 0) {
                     val gold = dice.roll(RngStream.LOOT, monsterDef.goldDrop)
                     add(Event.MonsterSlain(mode.monster, gold))
+                    rollLoot(monsterDef, dice)?.let { add(Event.ItemDropped(mode.monster, it)) }
                     if (content.rooms.getValue(state.currentRoom).isGoal) add(Event.GameWon)
                     return@buildList
                 }
@@ -287,6 +288,19 @@ class Engine(val content: ContentPack) {
                 monsterIntent = intent.id,
             )
         )
+    }
+
+    /** Chance gate then weighted pick, both from the LOOT stream — save-stable. */
+    private fun rollLoot(monster: MonsterDef, dice: Dice): com.cauldron.myriad.engine.model.ItemId? {
+        val loot = monster.loot ?: return null
+        if (!dice.chance(RngStream.LOOT, loot.chancePercent)) return null
+        val total = loot.entries.sumOf { it.weight }
+        var pick = dice.roll(RngStream.LOOT, 1..total)
+        for (entry in loot.entries) {
+            pick -= entry.weight
+            if (pick <= 0) return entry.item
+        }
+        return loot.entries.last().item
     }
 
     private fun drawIntent(monster: MonsterDef, dice: Dice): MoveDef {
@@ -363,6 +377,10 @@ class Engine(val content: ContentPack) {
             currentRoom = event.to,
             mode = Mode.Exploring,
         )
+
+        is Event.ItemDropped -> state.updateRoom(state.currentRoom) {
+            it.copy(itemsOnFloor = it.itemsOnFloor + event.item)
+        }
 
         is Event.ItemFound -> state.updateRoom(state.currentRoom) {
             it.copy(searched = true, itemsOnFloor = it.itemsOnFloor + event.item)

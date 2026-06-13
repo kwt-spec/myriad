@@ -6,6 +6,7 @@ import com.cauldron.myriad.engine.model.ExitDef
 import com.cauldron.myriad.engine.model.GameState
 import com.cauldron.myriad.engine.model.ItemDef
 import com.cauldron.myriad.engine.model.ItemId
+import com.cauldron.myriad.engine.model.LootTable
 import com.cauldron.myriad.engine.model.MeterDef
 import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.Mode
@@ -50,6 +51,8 @@ object TestWorlds {
         goldDrop: IntRange = 2..6,
         meters: Map<MeterId, MeterDef> = emptyMap(),
         havenStart: Boolean = meters.isNotEmpty(),
+        ratLoot: LootTable? = null,
+        extraItems: Map<ItemId, ItemDef> = emptyMap(),
     ): ContentPack = ContentPack(
         version = "test/1",
         intro = "Test intro.",
@@ -73,12 +76,13 @@ object TestWorlds {
                 isGoal = true,
             ),
         ),
-        items = mapOf(SWORD to ItemDef(SWORD, "sword", "A test sword.", attackBonus = 2)),
+        items = mapOf(SWORD to ItemDef(SWORD, "sword", "A test sword.", attackBonus = 2)) + extraItems,
         monsters = mapOf(
             RAT to MonsterDef(
                 id = RAT, name = "rat", description = "A test rat.",
                 maxHp = ratHp, attack = ratAttack, defense = ratDefense,
                 speed = ratSpeed, moves = moves, goldDrop = goldDrop,
+                loot = ratLoot,
             ),
         ),
         meters = meters,

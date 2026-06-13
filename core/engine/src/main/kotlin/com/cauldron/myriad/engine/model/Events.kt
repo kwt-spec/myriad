@@ -80,6 +80,10 @@ sealed interface Event {
     data class FleeSucceeded(val to: RoomId) : Event
 
     @Serializable
+    @SerialName("item_dropped")
+    data class ItemDropped(val monster: MonsterId, val item: ItemId) : Event
+
+    @Serializable
     @SerialName("item_found")
     data class ItemFound(val item: ItemId) : Event
 

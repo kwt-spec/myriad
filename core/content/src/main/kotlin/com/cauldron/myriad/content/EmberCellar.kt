@@ -4,6 +4,8 @@ import com.cauldron.myriad.engine.model.ContentPack
 import com.cauldron.myriad.engine.model.ExitDef
 import com.cauldron.myriad.engine.model.ItemDef
 import com.cauldron.myriad.engine.model.ItemId
+import com.cauldron.myriad.engine.model.LootEntry
+import com.cauldron.myriad.engine.model.LootTable
 import com.cauldron.myriad.engine.model.MeterDef
 import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.MonsterDef
@@ -37,8 +39,12 @@ object EmberCellar {
 
     val WARMTH = MeterId("warmth")
 
+    /** The Hundredfold expansion: generated weapon families + the capstone. */
+    private val hundredfoldItems: Map<ItemId, ItemDef> =
+        Hundredfold.weapons() + (Hundredfold.FIRST_EMBER to Hundredfold.capstone())
+
     val pack = ContentPack(
-        version = "ember-cellar/0.3",
+        version = "ember-age/0.4",
         intro = "Cold ash sifts down from the beams overhead. You wake on cracked flagstones " +
             "with no memory of the stairs that brought you down — only a seam of dim ember-light " +
             "somewhere above, and the certainty that the dark below is not empty.",
@@ -74,8 +80,12 @@ object EmberCellar {
                 name = "Collapsed Vault",
                 description = "Half the ceiling has come down in a frozen wave of brick. " +
                     "Between the fallen stones, a point of light weaves and bobs — too quick, " +
-                    "too deliberate to be a stray spark.",
-                exits = listOf(ExitDef("West — back to the passage", ROOT_PASSAGE)),
+                    "too deliberate to be a stray spark. Behind the rubble, a cracked stair " +
+                    "descends into a heat you can feel on your face.",
+                exits = listOf(
+                    ExitDef("West — back to the passage", ROOT_PASSAGE),
+                    ExitDef("Down — the cracked stair into the Ember Depths", Hundredfold.landingId(1)),
+                ),
                 monster = EMBER_WISP,
             ),
             CELLAR_STAIR to RoomDef(
@@ -85,15 +95,17 @@ object EmberCellar {
                 exits = listOf(ExitDef("South — down to the passage", ROOT_PASSAGE)),
                 isGoal = true,
             ),
-        ),
+        ) + Hundredfold.depthsRooms(COLLAPSED_VAULT, hundredfoldItems),
         items = mapOf(
             RUSTY_SWORD to ItemDef(
                 id = RUSTY_SWORD,
                 name = "rusty sword",
                 description = "Pitted iron, older than the cellar. Still bites.",
                 attackBonus = 2,
+                family = "sword",
+                tier = 1,
             ),
-        ),
+        ) + hundredfoldItems,
         monsters = mapOf(
             CINDER_RAT to MonsterDef(
                 id = CINDER_RAT,
@@ -145,8 +157,15 @@ object EmberCellar {
                     ),
                 ),
                 goldDrop = 1..3,
+                loot = LootTable(
+                    chancePercent = 50,
+                    entries = hundredfoldItems.values
+                        .filter { it.family == "dagger" && it.tier == 1 }
+                        .take(12)
+                        .map { LootEntry(it.id, 1) },
+                ),
             ),
-        ),
+        ) + Hundredfold.depthMonsters(hundredfoldItems),
         meters = mapOf(
             WARMTH to MeterDef(
                 id = WARMTH,

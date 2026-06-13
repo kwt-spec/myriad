@@ -38,7 +38,7 @@ object Narrator {
         is Event.CombatStarted, is Event.PlayerStruckMonster, is Event.MonsterStruckPlayer,
         Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
         is Event.MonsterIntentDrawn, is Event.CombatTicked -> FeedKind.COMBAT
-        is Event.ItemFound, is Event.ItemTaken, is Event.Equipped -> FeedKind.LOOT
+        is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped -> FeedKind.LOOT
         is Event.Camped -> FeedKind.NARRATION
         is Event.MetersTicked -> FeedKind.SYSTEM
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
@@ -97,6 +97,11 @@ object Narrator {
 
         is Event.FleeSucceeded ->
             "You tear yourself away and scramble back.\n\n" + describeRoom(state, content)
+
+        is Event.ItemDropped -> {
+            val monster = content.monsters.getValue(event.monster).name
+            "Among the $monster's ashes: ${content.items.getValue(event.item).name}."
+        }
 
         is Event.ItemFound -> {
             val room = content.rooms.getValue(state.currentRoom)
