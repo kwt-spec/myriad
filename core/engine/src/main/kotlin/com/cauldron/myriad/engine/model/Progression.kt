@@ -106,6 +106,30 @@ sealed interface AbilityKind {
 
     /** Refund [gaugeRefund] of recovery so you act again sooner. */
     data class Quicken(val gaugeRefund: Int) : AbilityKind
+
+    /**
+     * A composable kind: run [effects] in order. This is how the roster reaches 80
+     * ability kinds — status-appliers and combos built from primitives, without 60
+     * more bespoke resolver branches.
+     */
+    data class Composite(val effects: List<AbilityEffect>) : AbilityKind
+}
+
+/** Primitives a [AbilityKind.Composite] runs in order. */
+sealed interface AbilityEffect {
+    /** [hits] strikes; den fixed /10. */
+    data class Damage(val powerNum: Int, val defenseIgnored: Int, val critBonus: Int, val forceCrit: Boolean, val hits: Int) : AbilityEffect
+    data class Heal(val percentNum: Int) : AbilityEffect
+    data class LifeLeech(val percent: Int) : AbilityEffect
+    data class StaminaGain(val amount: Int) : AbilityEffect
+    data class GaugeRefund(val amount: Int) : AbilityEffect
+    data class FoeGauge(val push: Int) : AbilityEffect
+    data class SelfDamage(val percent: Int) : AbilityEffect
+    data class RoutChance(val percent: Int) : AbilityEffect
+    /** Inflict a debuff on the foe. */
+    data class Inflict(val status: StatusKind, val magnitude: Int, val turns: Int) : AbilityEffect
+    /** Grant a buff to the player. */
+    data class Empower(val status: StatusKind, val magnitude: Int, val turns: Int) : AbilityEffect
 }
 
 data class AbilityDef(

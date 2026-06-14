@@ -39,7 +39,8 @@ object Narrator {
         is Event.CombatStarted, is Event.PlayerStruckMonster, is Event.MonsterStruckPlayer,
         Event.PlayerBraced, is Event.FleeFailed, is Event.MonsterSlain,
         is Event.MonsterIntentDrawn, is Event.CombatTicked,
-        is Event.AbilityUsed, is Event.PlayerHealed, is Event.MonsterRouted -> FeedKind.COMBAT
+        is Event.AbilityUsed, is Event.PlayerHealed, is Event.MonsterRouted,
+        is Event.MonsterBled, is Event.PlayerSelfHarm -> FeedKind.COMBAT
         is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped -> FeedKind.LOOT
         is Event.Camped, is Event.Foraged -> FeedKind.NARRATION
         is Event.MetersTicked, is Event.XpGained, is Event.LeveledUp,
@@ -157,6 +158,11 @@ object Narrator {
 
         is Event.MonsterRouted ->
             "The ${content.monsters.getValue(event.monster).name} breaks and flees into the dark."
+
+        is Event.MonsterBled ->
+            "The ${content.monsters.getValue(event.monster).name}'s wounds weep — ${event.damage}."
+
+        is Event.PlayerSelfHarm -> "The effort costs you ${event.amount}."
 
         is Event.Foraged -> "You scrape together what fuel you can; the cold eases its grip a little."
 

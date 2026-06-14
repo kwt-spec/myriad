@@ -62,6 +62,7 @@ sealed interface Event {
         val braced: Boolean,
         val monsterIntent: MoveId,
         val abilityCooldowns: Map<AbilityId, Int> = emptyMap(),
+        val statuses: List<ActiveStatus> = emptyList(),
     ) : Event
 
     @Serializable
@@ -71,6 +72,14 @@ sealed interface Event {
     @Serializable
     @SerialName("player_healed")
     data class PlayerHealed(val amount: Int) : Event
+
+    @Serializable
+    @SerialName("monster_bled")
+    data class MonsterBled(val monster: MonsterId, val damage: Int) : Event
+
+    @Serializable
+    @SerialName("player_self_harm")
+    data class PlayerSelfHarm(val amount: Int) : Event
 
     @Serializable
     @SerialName("monster_routed")

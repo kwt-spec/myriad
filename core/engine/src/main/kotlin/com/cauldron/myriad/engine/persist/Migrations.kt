@@ -22,11 +22,15 @@ object Migrations {
      * unlockedNodes/mastery and `Mode.Combat` gained abilityCooldowns; all have
      * defaults (level 1, no xp, no nodes), so the lenient decode fills them and
      * the stamp suffices.
+     *
+     * v4 → v5 (status effects): `Mode.Combat` gained `statuses`; defaults to empty,
+     * so the stamp suffices.
      */
     fun migrate(save: SaveFile): SaveFile = when (save.formatVersion) {
         1 -> migrate(save.copy(formatVersion = 2))
         2 -> migrate(save.copy(formatVersion = 3))
         3 -> migrate(save.copy(formatVersion = 4))
+        4 -> migrate(save.copy(formatVersion = 5))
         SaveCodec.FORMAT_VERSION -> save
         else -> throw SaveCodec.CorruptSaveException(
             "no migration path from save format ${save.formatVersion}"

@@ -86,19 +86,30 @@ object GreatForge {
         else -> AbilityKind.Rout((35 + s * 5).coerceAtMost(85))
     }
 
-    /** The mechanical kind a theme's family is built on (all 20 used, 4 families each). */
-    private fun kindOf(themeIndex: Int) = themeIndex % 20
-
+    /**
+     * Each of the 80 themes IS one of the 80 ability kinds: themes 0–19 use the
+     * engine's 20 stateless sealed kinds; themes 20–79 use the 60 composite
+     * status archetypes. Every kind anchors a family of 6 tiers.
+     */
     fun abilities(): Map<AbilityId, AbilityDef> {
         val out = LinkedHashMap<AbilityId, AbilityDef>()
         THEMES.forEachIndexed { t, theme ->
-            val k = kindOf(t)
             for (tier in 0 until ABILITY_TIERS) {
                 val id = AbilityId("great_${slug(theme)}_$tier")
+                val kind: com.cauldron.myriad.engine.model.AbilityKind
+                val word: String; val stam: Int; val cdv: Int; val flavor: String
+                if (t < 20) {
+                    kind = makeKind(t, tier); word = KIND_WORD[t]
+                    stam = KIND_STAMINA[t] + tier * 3; cdv = KIND_CD[t]; flavor = KIND_FLAVOR[t]
+                } else {
+                    val a = t - 20
+                    kind = AbilityArchetypes.composite(a, tier); word = AbilityArchetypes.word(a)
+                    stam = AbilityArchetypes.stamina(a, tier); cdv = AbilityArchetypes.cd(a); flavor = AbilityArchetypes.flavor(a)
+                }
                 out[id] = AbilityDef(
-                    id, "$theme ${KIND_WORD[k]} ${ROMAN[tier]}",
-                    "The $theme way of ${KIND_WORD[k].lowercase()} — ${KIND_FLAVOR[k]}, at its ${ordinal(tier + 1)} form.",
-                    KIND_STAMINA[k] + tier * 3, KIND_CD[k], makeKind(k, tier),
+                    id, "$theme $word ${ROMAN[tier]}",
+                    "The $theme way of ${word.lowercase()} — $flavor, at its ${ordinal(tier + 1)} form.",
+                    stam, cdv, kind,
                 )
             }
         }

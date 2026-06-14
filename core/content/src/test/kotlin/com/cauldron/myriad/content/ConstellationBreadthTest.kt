@@ -34,9 +34,15 @@ class ConstellationBreadthTest {
     fun `the ability and sense rosters are vast`() {
         assertTrue(pack.abilities.size >= GreatForge.ABILITY_FLOOR, "abilities: ${pack.abilities.size}")
         assertTrue(pack.senses.size >= GreatForge.SENSE_FLOOR, "senses: ${pack.senses.size}")
-        // All 20 mechanical ability kinds appear.
-        val kinds = pack.abilities.values.map { it.kind::class }.toSet()
-        assertEquals(20, kinds.size, "all twenty ability kinds should appear, saw ${kinds.size}")
+        // 80 ability kinds: all 20 stateless sealed kinds + the 60 composite archetypes.
+        val sealedKinds = pack.abilities.values
+            .map { it.kind::class }
+            .filter { it != com.cauldron.myriad.engine.model.AbilityKind.Composite::class }
+            .toSet()
+        assertEquals(20, sealedKinds.size, "all 20 stateless ability kinds should appear, saw ${sealedKinds.size}")
+        assertEquals(60, AbilityArchetypes.COUNT, "60 composite archetypes")
+        assertEquals(80, sealedKinds.size + AbilityArchetypes.COUNT, "80 ability kinds total")
+        assertTrue(pack.abilities.values.any { it.kind is com.cauldron.myriad.engine.model.AbilityKind.Composite }, "composite kinds present")
         // All 20 sense-hint kinds appear.
         val hints = pack.senses.values.map { it.hint }.toSet()
         assertEquals(com.cauldron.myriad.engine.model.SenseHint.entries.size, hints.size, "every sense-hint should appear")

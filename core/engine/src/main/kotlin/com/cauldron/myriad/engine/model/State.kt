@@ -32,6 +32,23 @@ data class RoomState(
     val itemsOnFloor: List<ItemId> = emptyList(),
 )
 
+/**
+ * Lingering combat effects (the status-effect system behind the 80 ability kinds).
+ * Foe debuffs: BLEED (damage over time), STUN (skip a turn), WEAKEN (−attack%),
+ * SUNDER (−defense), MARK (+player crit). Self buffs: GUARD (−damage taken), RAGE
+ * (+attack), REGEN (heal over time), FOCUS (+crit), HASTE (faster recovery).
+ */
+@Serializable
+enum class StatusKind { BLEED, STUN, WEAKEN, SUNDER, MARK, GUARD, RAGE, REGEN, FOCUS, HASTE }
+
+@Serializable
+data class ActiveStatus(
+    val kind: StatusKind,
+    val magnitude: Int,
+    val turnsLeft: Int,
+    val onFoe: Boolean,
+)
+
 @Serializable
 sealed interface Mode {
     @Serializable
@@ -57,6 +74,8 @@ sealed interface Mode {
         val braced: Boolean = false,
         /** Ability id → player-turns remaining before reuse. Resets each fight. */
         val abilityCooldowns: Map<AbilityId, Int> = emptyMap(),
+        /** Active status effects (v5). Resets each fight; default keeps pre-v5 saves decoding. */
+        val statuses: List<ActiveStatus> = emptyList(),
     ) : Mode {
         companion object {
             const val GAUGE_MAX = 1000

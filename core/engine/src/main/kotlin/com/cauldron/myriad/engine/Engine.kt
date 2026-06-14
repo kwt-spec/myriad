@@ -278,18 +278,38 @@ class Engine(val content: ContentPack) {
         var cooldowns = mode.abilityCooldowns.mapValues { (_, t) -> (t - 1).coerceAtLeast(0) }
             .filterValues { it > 0 }
 
+        // Active status effects (read from the pre-action snapshot — debuffs/buffs
+        // applied THIS turn take effect on subsequent turns). New ones append here.
+        val statuses = mode.statuses.toMutableList()
+        fun foeStatus(k: com.cauldron.myriad.engine.model.StatusKind) =
+            statuses.filter { it.onFoe && it.kind == k && it.turnsLeft > 0 }.sumOf { it.magnitude }
+        fun selfStatus(k: com.cauldron.myriad.engine.model.StatusKind) =
+            statuses.filter { !it.onFoe && it.kind == k && it.turnsLeft > 0 }.sumOf { it.magnitude }
+        val rageBonus = selfStatus(com.cauldron.myriad.engine.model.StatusKind.RAGE)
+        val focusBonus = selfStatus(com.cauldron.myriad.engine.model.StatusKind.FOCUS)
+        val markBonus = foeStatus(com.cauldron.myriad.engine.model.StatusKind.MARK)
+        val sunderAmt = foeStatus(com.cauldron.myriad.engine.model.StatusKind.SUNDER)
+        val weakenPct = foeStatus(com.cauldron.myriad.engine.model.StatusKind.WEAKEN).coerceAtMost(90)
+        val guardAmt = selfStatus(com.cauldron.myriad.engine.model.StatusKind.GUARD)
+        val regenAmt = selfStatus(com.cauldron.myriad.engine.model.StatusKind.REGEN)
+        val bleedAmt = foeStatus(com.cauldron.myriad.engine.model.StatusKind.BLEED)
+        val hasteAmt = selfStatus(com.cauldron.myriad.engine.model.StatusKind.HASTE)
+        val foeStunned = statuses.any { it.onFoe && it.kind == com.cauldron.myriad.engine.model.StatusKind.STUN && it.turnsLeft > 0 }
+        val playerStrikeAttack = playerAttack(state) + rageBonus
+        val foeStrikeDefense = { extraIgnore: Int -> (monsterDef.defense - sunderAmt - extraIgnore).coerceAtLeast(0) }
+
         when (choice) {
             CombatChoice.Quick, CombatChoice.Heavy -> {
                 val heavy = choice == CombatChoice.Heavy
                 stamina -= staminaCost(state, if (heavy) STAMINA_HEAVY else STAMINA_QUICK)
                 val roll = dice.roll(RngStream.COMBAT, 1..6)
-                val crit = playerCrit(state, dice, baseCrit = roll == 6 || (heavy && roll == 5))
+                val crit = playerCrit(state, dice, baseCrit = roll == 6 || (heavy && roll == 5), abilityBonus = focusBonus + markBonus)
                 val damage = scaledDamage(
-                    attack = playerAttack(state),
+                    attack = playerStrikeAttack,
                     powerNum = if (heavy) HEAVY_POWER_NUM else QUICK_POWER_NUM,
                     powerDen = POWER_DEN,
                     roll = roll,
-                    defense = monsterDef.defense,
+                    defense = foeStrikeDefense(0),
                     crit = crit,
                     halved = false,
                 )
@@ -333,10 +353,10 @@ class Engine(val content: ContentPack) {
                 // captured combat vars; `add`/`addSlain` resolve to the buildList list.
                 fun strike(powNum: Int, defIgnore: Int, critBonus: Int, forceCrit: Boolean): Boolean {
                     val roll = dice.roll(RngStream.COMBAT, 1..6)
-                    val crit = forceCrit || playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = critBonus)
+                    val crit = forceCrit || playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = critBonus + focusBonus + markBonus)
                     val dmg = scaledDamage(
-                        playerAttack(state), powNum, 10, roll,
-                        (monsterDef.defense - defIgnore).coerceAtLeast(0), crit, false,
+                        playerStrikeAttack, powNum, 10, roll,
+                        foeStrikeDefense(defIgnore), crit, false,
                     )
                     add(Event.PlayerStruckMonster(mode.monster, dmg, crit, heavy = true))
                     monsterHp -= dmg
@@ -384,7 +404,8 @@ class Engine(val content: ContentPack) {
                     is com.cauldron.myriad.engine.model.AbilityKind.Berserk -> {
                         if (strike(kind.powerNum, 0, 0, false)) return@buildList
                         val self = (playerHp.toLong() * kind.selfDamagePercent / 100).toInt()
-                        playerHp = (playerHp - self).coerceAtLeast(1)
+                            .coerceAtMost(playerHp - 1).coerceAtLeast(0)
+                        if (self > 0) { add(Event.PlayerSelfHarm(self)); playerHp -= self }
                     }
                     is com.cauldron.myriad.engine.model.AbilityKind.LifeStrike -> {
                         if (strike(kind.powerNum, 0, 0, false)) return@buildList
@@ -429,6 +450,35 @@ class Engine(val content: ContentPack) {
                         if (dice.chance(RngStream.COMBAT, kind.chancePercent)) {
                             add(Event.MonsterRouted(mode.monster)); return@buildList
                         }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Composite -> {
+                        for (effect in kind.effects) {
+                            when (effect) {
+                                is com.cauldron.myriad.engine.model.AbilityEffect.Damage ->
+                                    repeat(effect.hits.coerceAtLeast(1)) {
+                                        if (strike(effect.powerNum, effect.defenseIgnored, effect.critBonus, effect.forceCrit)) return@buildList
+                                    }
+                                is com.cauldron.myriad.engine.model.AbilityEffect.Heal ->
+                                    healBy(maxHp * effect.percentNum / 100)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.LifeLeech ->
+                                    healBy(lastHit * effect.percent / 100)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.StaminaGain -> gainStamina(effect.amount)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.GaugeRefund ->
+                                    recovery = (recovery - effect.amount).coerceAtLeast(200)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.FoeGauge ->
+                                    monsterGauge = (monsterGauge - effect.push).coerceAtLeast(0)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.SelfDamage -> {
+                                    val self = (playerHp * effect.percent / 100).coerceAtMost(playerHp - 1).coerceAtLeast(0)
+                                    if (self > 0) { add(Event.PlayerSelfHarm(self)); playerHp -= self }
+                                }
+                                is com.cauldron.myriad.engine.model.AbilityEffect.RoutChance ->
+                                    if (dice.chance(RngStream.COMBAT, effect.percent)) { add(Event.MonsterRouted(mode.monster)); return@buildList }
+                                is com.cauldron.myriad.engine.model.AbilityEffect.Inflict ->
+                                    statuses += com.cauldron.myriad.engine.model.ActiveStatus(effect.status, effect.magnitude, effect.turns, onFoe = true)
+                                is com.cauldron.myriad.engine.model.AbilityEffect.Empower ->
+                                    statuses += com.cauldron.myriad.engine.model.ActiveStatus(effect.status, effect.magnitude, effect.turns, onFoe = false)
+                            }
+                        }
+                    }
                 }
                 val cd = (ability.cooldownTurns - cooldownReduction(state)).coerceAtLeast(if (ability.cooldownTurns > 0) 1 else 0)
                 if (cd > 0) cooldowns = cooldowns + (ability.id to cd)
@@ -436,10 +486,15 @@ class Engine(val content: ContentPack) {
             }
         }
 
+        // Haste: a buffed player recovers faster (gauge closer to ready).
+        if (hasteAmt > 0) playerGauge = (playerGauge + hasteAmt).coerceAtMost(Mode.Combat.GAUGE_MAX)
+
         // Advance time until the player is ready again. The monster's gauge may
         // wrap multiple times — each wrap executes the telegraphed intent and
-        // draws the next one.
-        val reduction = damageReduction(state)
+        // draws the next one. WEAKEN cuts its attack, GUARD softens the blow, and
+        // STUN makes it forfeit its actions this turn.
+        val reduction = damageReduction(state) + guardAmt
+        val foeAttack = (monsterDef.attack.toLong() * (100 - weakenPct) / 100).toInt().coerceAtLeast(1)
         var guard = 0
         while (playerGauge < Mode.Combat.GAUGE_MAX) {
             check(++guard <= ADVANCE_GUARD) { "ATB advancement runaway (speeds: player $PLAYER_SPEED, monster ${monsterDef.speed})" }
@@ -447,10 +502,11 @@ class Engine(val content: ContentPack) {
             monsterGauge += monsterDef.speed
             while (monsterGauge >= Mode.Combat.GAUGE_MAX) {
                 monsterGauge -= Mode.Combat.GAUGE_MAX
+                if (foeStunned) continue // stunned: the foe forfeits this action
                 val roll = dice.roll(RngStream.COMBAT, 1..6)
                 val crit = roll == 6
                 val raw = scaledDamage(
-                    attack = monsterDef.attack,
+                    attack = foeAttack,
                     powerNum = intent.powerNum,
                     powerDen = intent.powerDen,
                     roll = roll,
@@ -470,6 +526,21 @@ class Engine(val content: ContentPack) {
                 add(Event.MonsterIntentDrawn(mode.monster, intent.id))
             }
         }
+
+        // End-of-turn status ticks: REGEN heals, BLEED bites (can finish a foe),
+        // then every status loses a turn and the spent ones fall away.
+        if (regenAmt > 0 && playerHp < maxHp) {
+            val h = regenAmt.coerceAtMost(maxHp - playerHp)
+            playerHp += h
+            add(Event.PlayerHealed(h))
+        }
+        if (bleedAmt > 0) {
+            add(Event.MonsterBled(mode.monster, bleedAmt))
+            monsterHp -= bleedAmt
+            if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
+        }
+        val tickedStatuses = statuses.map { it.copy(turnsLeft = it.turnsLeft - 1) }.filter { it.turnsLeft > 0 }
+
         add(
             Event.CombatTicked(
                 playerGauge = playerGauge.coerceAtMost(Mode.Combat.GAUGE_MAX),
@@ -478,6 +549,7 @@ class Engine(val content: ContentPack) {
                 braced = braced,
                 monsterIntent = intent.id,
                 abilityCooldowns = cooldowns,
+                statuses = tickedStatuses,
             )
         )
     }
@@ -557,6 +629,7 @@ class Engine(val content: ContentPack) {
                         braced = event.braced,
                         monsterIntent = event.monsterIntent,
                         abilityCooldowns = event.abilityCooldowns,
+                        statuses = event.statuses,
                     )
                 )
             } else state
@@ -572,6 +645,14 @@ class Engine(val content: ContentPack) {
 
         is Event.PlayerHealed -> state.copy(
             player = state.player.copy(hp = (state.player.hp + event.amount).coerceAtMost(effectiveMaxHp(state)))
+        )
+
+        is Event.MonsterBled -> state.updateRoom(state.currentRoom) {
+            it.copy(monsterHp = ((it.monsterHp ?: 0) - event.damage).coerceAtLeast(0))
+        }
+
+        is Event.PlayerSelfHarm -> state.copy(
+            player = state.player.copy(hp = (state.player.hp - event.amount).coerceAtLeast(0))
         )
 
         is Event.XpGained -> state.copy(player = state.player.copy(xp = state.player.xp + event.amount))

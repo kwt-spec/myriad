@@ -66,14 +66,26 @@ sustain between hearths.
 entry distinct in id/name/prose (test-enforced), every effect real, the whole
 ~1,900-node graph passing the Forge's acyclic/reachability linters.
 
-### 20 mechanical ability kinds
+### 80 ability kinds + a status-effect system
 
-Every ability resolves statelessly in the tick-ATB engine as one of twenty kinds —
-all 20 are represented across the roster: **Strike, MultiStrike, Execute, Berserk,
-Reckless, Precise, Smite, Hew, Riposte, LifeStrike, Drain, Stagger, Sap, Terror,
-Heal, Channel, Bulwark, Recover, Quicken, Rout.** (Damage, finishers, self-cost
-power, lifedrain, stamina/gauge utility, heals, and fight-enders — no lingering
-buffs, so no save-format cost.)
+Combat now carries **status effects** (`Mode.Combat.statuses`, save format v5): foe
+debuffs **BLEED** (damage over time), **STUN** (forfeit a turn), **WEAKEN** (−attack),
+**SUNDER** (−defence), **MARK** (+your crit); self buffs **GUARD** (−damage taken),
+**RAGE** (+attack), **REGEN** (heal over time), **FOCUS** (+crit), **HASTE** (faster
+recovery). They tick at end of turn and are deterministic, saved, and replayable.
+
+On that foundation there are **80 ability kinds**:
+- **20 stateless sealed kinds** in the engine — Strike, MultiStrike, Execute, Berserk,
+  Reckless, Precise, Smite, Hew, Riposte, LifeStrike, Drain, Stagger, Sap, Terror,
+  Heal, Channel, Bulwark, Recover, Quicken, Rout.
+- **60 composite archetypes** (`AbilityArchetypes`) — named effect-compositions built
+  from damage/heal/lifeleech/stamina/gauge/rout/self-cost primitives plus
+  inflict/empower of the ten statuses: Bleed, Poison, Rupture, Stun, Cripple, Sunder,
+  Hex, Curse, Guard, Rage, Regen, Focus, Haste, Vampire, Soulrend, Onslaught, Tempest,
+  Doom, Cataclysm, and 41 more.
+
+Each of the Great Forge's 80 constellations anchors one of the 80 kinds, scaling it
+across six tiers.
 
 ### 20 sense kinds
 
