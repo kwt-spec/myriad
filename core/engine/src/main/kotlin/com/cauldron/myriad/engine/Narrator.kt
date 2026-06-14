@@ -56,7 +56,8 @@ object Narrator {
         val monster = content.monsters.getValue(monsterId)
         val move = monster.moves.firstOrNull { it.id == moveId } ?: monster.moves.first()
         val hp = state.roomStateFor(state.currentRoom, content).monsterHp ?: 0
-        return content.senses.values.filter { it.id in owned }.map { sense ->
+        // Dedupe by hint so owning dozens of senses still reads as a tidy intel block.
+        return content.senses.values.filter { it.id in owned }.distinctBy { it.hint }.map { sense ->
             val intel = when (sense.hint) {
                 com.cauldron.myriad.engine.model.SenseHint.EXACT_HP -> "${monster.name} has $hp HP"
                 com.cauldron.myriad.engine.model.SenseHint.DAMAGE_FORECAST -> {
@@ -85,6 +86,18 @@ object Narrator {
                     val ticks = ((com.cauldron.myriad.engine.model.Mode.Combat.GAUGE_MAX - gauge) + monster.speed - 1) / monster.speed.coerceAtLeast(1)
                     "it will act in about $ticks tick${if (ticks == 1) "" else "s"}"
                 }
+                com.cauldron.myriad.engine.model.SenseHint.RAW_ATTACK -> "its blows carry ${monster.attack} force"
+                com.cauldron.myriad.engine.model.SenseHint.RAW_DEFENSE -> "its guard is worth ${monster.defense}"
+                com.cauldron.myriad.engine.model.SenseHint.HP_FRACTION -> "it is at ${if (monster.maxHp > 0) hp * 100 / monster.maxHp else 0}% of its strength"
+                com.cauldron.myriad.engine.model.SenseHint.MOVE_COUNT -> "it knows ${monster.moves.size} ways to hurt you"
+                com.cauldron.myriad.engine.model.SenseHint.GOLD_SCENT -> "it carries ${monster.goldDrop.first}–${monster.goldDrop.last} coin"
+                com.cauldron.myriad.engine.model.SenseHint.TIER_READ -> "it is a ${tierWord(monster.maxHp)} thing"
+                com.cauldron.myriad.engine.model.SenseHint.INITIATIVE -> if (monster.speed > 100) "it moves before you" else "you move before it"
+                com.cauldron.myriad.engine.model.SenseHint.RESILIENCE -> "unhurt, it holds ${monster.maxHp} life"
+                com.cauldron.myriad.engine.model.SenseHint.MENACE -> "its menace rates ${monster.attack * monster.speed / 100}"
+                com.cauldron.myriad.engine.model.SenseHint.FRAILTY -> if (monster.defense <= 1) "it has almost no guard" else "it is armoured"
+                com.cauldron.myriad.engine.model.SenseHint.PERSISTENCE -> if (hp * 2 <= monster.maxHp) "it is past half — pressing now will end it" else "it is still strong"
+                com.cauldron.myriad.engine.model.SenseHint.OMEN -> "the dark leans toward this one"
             }
             "  ${sense.name}: $intel."
         }
@@ -92,6 +105,14 @@ object Narrator {
 
     private fun xpHint(monster: com.cauldron.myriad.engine.model.MonsterDef): Long =
         (monster.maxHp / 3L) + monster.attack * 4L + monster.defense * 2L + 8L
+
+    private fun tierWord(maxHp: Int): String = when {
+        maxHp < 20 -> "frail"
+        maxHp < 60 -> "sturdy"
+        maxHp < 150 -> "dangerous"
+        maxHp < 350 -> "dire"
+        else -> "monstrous"
+    }
 
     /** Renders one event against the post-reduce state. Blank = no feed line. */
     fun narrate(event: Event, state: GameState, content: ContentPack): String = when (event) {

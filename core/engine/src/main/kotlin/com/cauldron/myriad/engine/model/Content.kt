@@ -203,6 +203,16 @@ data class ContentPack(
                 is AbilityKind.Rout -> {
                     if (kind.chancePercent !in 1..100) problems += "ability '${ability.id.value}': rout chance out of range"
                 }
+                is AbilityKind.Terror -> {
+                    if (kind.chancePercent !in 1..100) problems += "ability '${ability.id.value}': terror chance out of range"
+                }
+                is AbilityKind.MultiStrike -> {
+                    if (kind.hits !in 1..12) problems += "ability '${ability.id.value}': hits out of range"
+                }
+                else -> {
+                    // The remaining stateless kinds carry only positive scalars; a light guard.
+                    if (ability.staminaCost > 500) problems += "ability '${ability.id.value}': stamina cost absurd"
+                }
             }
         }
 

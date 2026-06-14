@@ -43,8 +43,10 @@ object EmberCellar {
     private val hundredfoldItems: Map<ItemId, ItemDef> =
         Hundredfold.weapons() + (Hundredfold.FIRST_EMBER to Hundredfold.capstone())
 
-    /** The Constellation Forge: generated tiered abilities (declared before pack). */
+    /** The Constellation Forge + Great Forge: generated progression (declared before pack). */
     private val forgedAbilities = ConstellationForge.abilities()
+    private val greatAbilities = GreatForge.abilities()
+    private val greatSenses = GreatForge.senses()
 
     val pack = ContentPack(
         version = "ember-age/0.4",
@@ -183,8 +185,9 @@ object EmberCellar {
                 emptyDamagePerAction = 2,
             ),
         ),
-        abilities = Constellations.abilities + forgedAbilities,
-        nodes = Constellations.nodes + ConstellationForge.nodes(forgedAbilities),
-        senses = Constellations.senses,
+        abilities = Constellations.abilities + forgedAbilities + greatAbilities,
+        nodes = Constellations.nodes + ConstellationForge.nodes(forgedAbilities) +
+            GreatForge.nodes(greatSenses, greatAbilities),
+        senses = Constellations.senses + greatSenses,
     )
 }

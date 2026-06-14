@@ -325,49 +325,114 @@ class Engine(val content: ContentPack) {
                 val ability = choice.def
                 stamina -= staminaCost(state, ability.staminaCost)
                 add(Event.AbilityUsed(ability.id))
+                var recovery = RECOVERY_ABILITY
+                var lastHit = 0
+
+                // One scaled strike (den fixed /10 for the new kinds). Returns true
+                // if it killed — caller must then `return@buildList`. Mutates the
+                // captured combat vars; `add`/`addSlain` resolve to the buildList list.
+                fun strike(powNum: Int, defIgnore: Int, critBonus: Int, forceCrit: Boolean): Boolean {
+                    val roll = dice.roll(RngStream.COMBAT, 1..6)
+                    val crit = forceCrit || playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = critBonus)
+                    val dmg = scaledDamage(
+                        playerAttack(state), powNum, 10, roll,
+                        (monsterDef.defense - defIgnore).coerceAtLeast(0), crit, false,
+                    )
+                    add(Event.PlayerStruckMonster(mode.monster, dmg, crit, heavy = true))
+                    monsterHp -= dmg
+                    lastHit = dmg
+                    if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return true }
+                    return false
+                }
+                fun healBy(amount: Int) {
+                    val h = amount.coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
+                    if (h > 0) { playerHp += h; add(Event.PlayerHealed(h)) }
+                }
+                fun gainStamina(amount: Int) { stamina = (stamina + amount).coerceAtMost(maxStamina) }
+
                 when (val kind = ability.kind) {
-                    is com.cauldron.myriad.engine.model.AbilityKind.Strike -> {
-                        val roll = dice.roll(RngStream.COMBAT, 1..6)
-                        val crit = playerCrit(state, dice, baseCrit = roll == 6, abilityBonus = kind.critBonus)
-                        val damage = scaledDamage(
-                            attack = playerAttack(state), powerNum = kind.powerNum, powerDen = kind.powerDen,
-                            roll = roll, defense = (monsterDef.defense - kind.defenseIgnored).coerceAtLeast(0),
-                            crit = crit, halved = false,
-                        )
-                        add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy = true))
-                        monsterHp -= damage
-                        if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Strike ->
+                        if (strike(kind.powerNum, kind.defenseIgnored, kind.critBonus, false)) return@buildList
+                    is com.cauldron.myriad.engine.model.AbilityKind.Precise ->
+                        if (strike(kind.powerNum, 99_999, 0, false)) return@buildList
+                    is com.cauldron.myriad.engine.model.AbilityKind.Reckless ->
+                        if (strike(kind.powerNum, 0, 0, true)) return@buildList
+                    is com.cauldron.myriad.engine.model.AbilityKind.Riposte -> {
+                        if (strike(kind.powerNum, 2, kind.critBonus, false)) return@buildList
+                        recovery = RECOVERY_RIPOSTE
                     }
-                    is com.cauldron.myriad.engine.model.AbilityKind.LifeStrike -> {
-                        val roll = dice.roll(RngStream.COMBAT, 1..6)
-                        val crit = playerCrit(state, dice, baseCrit = roll == 6)
-                        val damage = scaledDamage(
-                            attack = playerAttack(state), powerNum = kind.powerNum, powerDen = kind.powerDen,
-                            roll = roll, defense = monsterDef.defense, crit = crit, halved = false,
-                        )
-                        add(Event.PlayerStruckMonster(mode.monster, damage, crit, heavy = true))
-                        monsterHp -= damage
-                        if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
-                        val healed = (damage.toLong() * kind.healPercent / 100).toInt()
-                            .coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
-                        if (healed > 0) { playerHp += healed; add(Event.PlayerHealed(healed)) }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Hew -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        recovery = RECOVERY_HEW
                     }
-                    is com.cauldron.myriad.engine.model.AbilityKind.Heal -> {
-                        val healed = ((maxHp.toLong() * kind.percentNum / kind.percentDen).toInt())
-                            .coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
-                        playerHp += healed
-                        add(Event.PlayerHealed(healed))
-                    }
-                    is com.cauldron.myriad.engine.model.AbilityKind.Rout -> {
-                        if (dice.chance(RngStream.COMBAT, kind.chancePercent)) {
-                            add(Event.MonsterRouted(mode.monster))
-                            return@buildList
+                    is com.cauldron.myriad.engine.model.AbilityKind.MultiStrike ->
+                        repeat(kind.hits) { if (strike(kind.powerNum, 0, 0, false)) return@buildList }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Smite -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        val bonus = kind.flatBonus.coerceAtLeast(0)
+                        if (bonus > 0) {
+                            add(Event.PlayerStruckMonster(mode.monster, bonus, false, true))
+                            monsterHp -= bonus
+                            if (monsterHp <= 0) { addSlain(state, monsterDef, dice); return@buildList }
                         }
                     }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Execute -> {
+                        val threshold = monsterDef.maxHp * kind.thresholdPercent / 100
+                        val pow = if (monsterHp <= threshold) kind.powerNum * kind.bonusPercent / 100 else kind.powerNum
+                        if (strike(pow, 0, 0, false)) return@buildList
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Berserk -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        val self = (playerHp.toLong() * kind.selfDamagePercent / 100).toInt()
+                        playerHp = (playerHp - self).coerceAtLeast(1)
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.LifeStrike -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        healBy((lastHit.toLong() * kind.healPercent / 100).toInt())
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Drain -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        gainStamina(lastHit * kind.staminaPercent / 100)
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Stagger -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        monsterGauge = (monsterGauge - kind.gaugePush).coerceAtLeast(0)
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Sap -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        monsterGauge = (monsterGauge - kind.gaugePush).coerceAtLeast(0)
+                        gainStamina(kind.staminaGain)
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Terror -> {
+                        if (strike(kind.powerNum, 0, 0, false)) return@buildList
+                        if (dice.chance(RngStream.COMBAT, kind.chancePercent)) {
+                            add(Event.MonsterRouted(mode.monster)); return@buildList
+                        }
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Heal ->
+                        healBy((maxHp.toLong() * kind.percentNum / kind.percentDen).toInt())
+                    is com.cauldron.myriad.engine.model.AbilityKind.Channel -> {
+                        healBy(maxHp * kind.percentNum / 100)
+                        recovery = RECOVERY_CHANNEL
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Bulwark -> {
+                        healBy(maxHp * kind.healPercentNum / 100)
+                        gainStamina(kind.staminaGain)
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Recover -> {
+                        gainStamina(kind.staminaGain)
+                        recovery = RECOVERY_RECOVER
+                    }
+                    is com.cauldron.myriad.engine.model.AbilityKind.Quicken ->
+                        recovery = (RECOVERY_ABILITY - kind.gaugeRefund).coerceAtLeast(200)
+                    is com.cauldron.myriad.engine.model.AbilityKind.Rout ->
+                        if (dice.chance(RngStream.COMBAT, kind.chancePercent)) {
+                            add(Event.MonsterRouted(mode.monster)); return@buildList
+                        }
                 }
                 val cd = (ability.cooldownTurns - cooldownReduction(state)).coerceAtLeast(if (ability.cooldownTurns > 0) 1 else 0)
                 if (cd > 0) cooldowns = cooldowns + (ability.id to cd)
-                playerGauge = Mode.Combat.GAUGE_MAX - RECOVERY_ABILITY
+                playerGauge = Mode.Combat.GAUGE_MAX - recovery
             }
         }
 
@@ -714,6 +779,10 @@ class Engine(val content: ContentPack) {
         const val STAMINA_HEAVY = 40
         const val STAMINA_BRACE_RESTORE = 25
         const val RECOVERY_ABILITY = 1300
+        const val RECOVERY_RIPOSTE = 700
+        const val RECOVERY_HEW = 1700
+        const val RECOVERY_CHANNEL = 1800
+        const val RECOVERY_RECOVER = 600
         const val FORAGE_GAIN = 12
         const val FORAGE_KINDLE = 25
 

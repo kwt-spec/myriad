@@ -20,21 +20,33 @@ class ConstellationBreadthTest {
     private val engine = Engine(pack)
 
     @Test
-    fun `all five constellations are present and deep`() {
+    fun `the five named trees stay deep and the Great Forge adds eighty more`() {
         val byTree = pack.nodes.values.groupingBy { it.constellation }.eachCount()
         for (tree in listOf("Body", "Mind", "Senses", "Craft", "Voice")) {
             assertTrue((byTree[tree] ?: 0) >= 40, "$tree shallow: ${byTree[tree]}")
         }
-        assertTrue(pack.nodes.size >= ConstellationForge.NODE_FLOOR, "node floor: ${pack.nodes.size} < ${ConstellationForge.NODE_FLOOR}")
+        // 5 named + 80 generated constellations.
+        assertTrue(byTree.size >= 85, "constellations: ${byTree.size} < 85")
+        assertTrue(pack.nodes.size >= GreatForge.NODE_FLOOR, "node floor: ${pack.nodes.size} < ${GreatForge.NODE_FLOOR}")
     }
 
     @Test
-    fun `the ability and sense rosters are broad`() {
-        assertTrue(pack.abilities.size >= ConstellationForge.ABILITY_FLOOR, "abilities: ${pack.abilities.size}")
-        assertTrue(pack.senses.size >= 8, "senses: ${pack.senses.size}")
-        // Every ability kind is represented.
+    fun `the ability and sense rosters are vast`() {
+        assertTrue(pack.abilities.size >= GreatForge.ABILITY_FLOOR, "abilities: ${pack.abilities.size}")
+        assertTrue(pack.senses.size >= GreatForge.SENSE_FLOOR, "senses: ${pack.senses.size}")
+        // All 20 mechanical ability kinds appear.
         val kinds = pack.abilities.values.map { it.kind::class }.toSet()
-        assertEquals(4, kinds.size, "all four ability kinds should appear, saw $kinds")
+        assertEquals(20, kinds.size, "all twenty ability kinds should appear, saw ${kinds.size}")
+        // All 20 sense-hint kinds appear.
+        val hints = pack.senses.values.map { it.hint }.toSet()
+        assertEquals(com.cauldron.myriad.engine.model.SenseHint.entries.size, hints.size, "every sense-hint should appear")
+    }
+
+    @Test
+    fun `the Great Forge yields 80 families of six tiers`() {
+        assertEquals(80, GreatForge.THEMES.size, "80 themes")
+        assertEquals(80 * 6, GreatForge.abilities().size, "80 families × 6 tiers = 480 abilities")
+        assertEquals(80, GreatForge.THEMES.toSet().size, "theme names must be unique")
     }
 
     @Test

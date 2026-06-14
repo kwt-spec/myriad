@@ -21,7 +21,11 @@ object Senses {
 }
 
 /** What a sense reveals in combat narration — rendered generically by the Narrator. */
-enum class SenseHint { EXACT_HP, DAMAGE_FORECAST, WEAKNESS, LOOT_SCENT, SPEED_READ, SOUL_COUNT, DEADLIEST_MOVE, READ_GAUGE }
+enum class SenseHint {
+    EXACT_HP, DAMAGE_FORECAST, WEAKNESS, LOOT_SCENT, SPEED_READ, SOUL_COUNT, DEADLIEST_MOVE, READ_GAUGE,
+    RAW_ATTACK, RAW_DEFENSE, HP_FRACTION, MOVE_COUNT, GOLD_SCENT, TIER_READ, INITIATIVE, RESILIENCE,
+    MENACE, FRAILTY, PERSISTENCE, OMEN,
+}
 
 data class SenseDef(
     val id: SenseId,
@@ -36,6 +40,12 @@ object Verbs {
     val KINDLE = VerbId("kindle")
 }
 
+/**
+ * 20 mechanically-distinct ability kinds, all resolved statelessly in the
+ * tick-ATB engine (they touch HP / stamina / gauges / end-fight — never lingering
+ * buffs, so no save-format cost). The first four keep a powerDen field; the rest
+ * use an implicit /10 denominator.
+ */
 sealed interface AbilityKind {
     /** Weapon strike: attack × num/den, ignoring [defenseIgnored] of defence, with a flat crit-chance rider. */
     data class Strike(val powerNum: Int, val powerDen: Int, val defenseIgnored: Int, val critBonus: Int) : AbilityKind
@@ -48,6 +58,54 @@ sealed interface AbilityKind {
 
     /** [chancePercent] to rout the foe outright — it flees, ending the fight (no loot, no XP). */
     data class Rout(val chancePercent: Int) : AbilityKind
+
+    /** [hits] separate strikes in one action. */
+    data class MultiStrike(val powerNum: Int, val hits: Int) : AbilityKind
+
+    /** A finisher: ×[bonusPercent]/100 damage if the foe is at or below [thresholdPercent]% HP. */
+    data class Execute(val powerNum: Int, val thresholdPercent: Int, val bonusPercent: Int) : AbilityKind
+
+    /** A huge blow that costs you [selfDamagePercent]% of current HP (never lethal). */
+    data class Berserk(val powerNum: Int, val selfDamagePercent: Int) : AbilityKind
+
+    /** A strike that always crits. */
+    data class Reckless(val powerNum: Int) : AbilityKind
+
+    /** A strike that ignores all of the foe's defence. */
+    data class Precise(val powerNum: Int) : AbilityKind
+
+    /** A strike with [flatBonus] flat damage added after scaling. */
+    data class Smite(val powerNum: Int, val flatBonus: Int) : AbilityKind
+
+    /** A heavy single blow, no crit, slow to recover from. */
+    data class Hew(val powerNum: Int) : AbilityKind
+
+    /** A cheap fast counter with a crit rider and short recovery. */
+    data class Riposte(val powerNum: Int, val critBonus: Int) : AbilityKind
+
+    /** A strike that restores stamina equal to [staminaPercent]% of the damage dealt. */
+    data class Drain(val powerNum: Int, val staminaPercent: Int) : AbilityKind
+
+    /** A strike that pushes the foe's ATB gauge back by [gaugePush]. */
+    data class Stagger(val powerNum: Int, val gaugePush: Int) : AbilityKind
+
+    /** A strike that delays the foe ([gaugePush]) and restores [staminaGain] stamina. */
+    data class Sap(val powerNum: Int, val gaugePush: Int, val staminaGain: Int) : AbilityKind
+
+    /** A small hit with a [chancePercent] chance to also rout the foe. */
+    data class Terror(val powerNum: Int, val chancePercent: Int) : AbilityKind
+
+    /** A large heal ([percentNum]% of max HP) with long recovery — you drop your guard. */
+    data class Channel(val percentNum: Int) : AbilityKind
+
+    /** Heal [healPercentNum]% of max HP and restore [staminaGain] stamina — a defensive set. */
+    data class Bulwark(val healPercentNum: Int, val staminaGain: Int) : AbilityKind
+
+    /** Catch your breath: restore [staminaGain] stamina, short recovery, no attack. */
+    data class Recover(val staminaGain: Int) : AbilityKind
+
+    /** Refund [gaugeRefund] of recovery so you act again sooner. */
+    data class Quicken(val gaugeRefund: Int) : AbilityKind
 }
 
 data class AbilityDef(

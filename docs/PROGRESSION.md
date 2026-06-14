@@ -51,13 +51,37 @@ sentences): **Deathsight** (exact HP), **Foresight** (blow severity), **Aurasigh
 **Forage** and **Kindle** (Craft) restore warmth without a full camp — exploration
 sustain between hearths.
 
-## Scale (the Constellation Forge)
+## Scale — three layers of progression content
 
-On top of the hand-authored core, `ConstellationForge` generates tiered ability
-families (Strikes I–VII, Heals/LifeStrikes/Routs I–IV) and per-tree stat-rank
-chains, for **~90 abilities** and **~326 nodes** across the five trees — all
-distinct in id/name/prose, all real effects, validated like every content pack.
-(The Great Forge expands this much further — see the constellation count below.)
+1. **Hand-authored core** (`Constellations.kt`): the five named trees (Body/Mind/
+   Senses/Craft/Voice), 27 abilities, 8 senses, ~113 prereq-chained nodes.
+2. **The Constellation Forge** (`ConstellationForge.kt`): tiered ability families +
+   per-tree stat chains → ~90 abilities / ~326 nodes across the five trees.
+3. **The Great Forge** (`GreatForge.kt`): **80 generated constellations** (Flame,
+   Frost, Wolf, Raven, Star, Void, Valor, Wrath, Forge, Gallows, …), each one an
+   **ability family of 6 tiers** built on a signature mechanical kind, plus stat
+   chains and two senses.
+
+**Totals: 85 constellations · 570 abilities · 168 senses · 1,926 nodes** — every
+entry distinct in id/name/prose (test-enforced), every effect real, the whole
+~1,900-node graph passing the Forge's acyclic/reachability linters.
+
+### 20 mechanical ability kinds
+
+Every ability resolves statelessly in the tick-ATB engine as one of twenty kinds —
+all 20 are represented across the roster: **Strike, MultiStrike, Execute, Berserk,
+Reckless, Precise, Smite, Hew, Riposte, LifeStrike, Drain, Stagger, Sap, Terror,
+Heal, Channel, Bulwark, Recover, Quicken, Rout.** (Damage, finishers, self-cost
+power, lifedrain, stamina/gauge utility, heals, and fight-enders — no lingering
+buffs, so no save-format cost.)
+
+### 20 sense kinds
+
+Senses reveal one of twenty intel lines (exact HP, blow forecast, weakness, loot
+scent, speed, soul value, deadliest move, time-to-act, raw attack/defence, HP
+fraction, move count, gold, tier, initiative, resilience, menace, frailty,
+persistence, omen). Owning many senses shows a tidy block — the Narrator dedupes
+by what's revealed.
 
 ## Proven winnable
 
