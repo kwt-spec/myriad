@@ -41,10 +41,12 @@ object Narrator {
         is Event.MonsterIntentDrawn, is Event.CombatTicked,
         is Event.AbilityUsed, is Event.PlayerHealed, is Event.MonsterRouted,
         is Event.MonsterBled, is Event.PlayerSelfHarm -> FeedKind.COMBAT
-        is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped -> FeedKind.LOOT
-        is Event.Camped, is Event.Foraged -> FeedKind.NARRATION
+        is Event.ItemFound, is Event.ItemTaken, is Event.Equipped, is Event.ItemDropped,
+        is Event.ItemReceived, is Event.ItemConsumed, is Event.GoldGained -> FeedKind.LOOT
+        is Event.Camped, is Event.Foraged, is Event.EnteredStorylet, is Event.StoryNarration -> FeedKind.NARRATION
         is Event.MetersTicked, is Event.XpGained, is Event.LeveledUp,
-        is Event.NodeUnlocked, is Event.Respecced -> FeedKind.SYSTEM
+        is Event.NodeUnlocked, is Event.Respecced, is Event.CheckResolved,
+        Event.LeftStorylet, is Event.FlagSet -> FeedKind.SYSTEM
         Event.PlayerDied, Event.GameWon -> FeedKind.SYSTEM
     }
 
@@ -106,6 +108,39 @@ object Narrator {
 
     private fun xpHint(monster: com.cauldron.myriad.engine.model.MonsterDef): Long =
         (monster.maxHp / 3L) + monster.attack * 4L + monster.defense * 2L + 8L
+
+    private enum class Source { ASH, RUBBLE, HAND }
+
+    /**
+     * A weapon should feel *earned and fortunate in the moment* (Kaelen), not pop out
+     * of nowhere. A momentous, tier-aware beat that surfaces the weapon's lore line;
+     * phrasing varies deterministically by item id (no RNG drift).
+     */
+    private fun luckyFind(itemId: com.cauldron.myriad.engine.model.ItemId, content: ContentPack, source: Source, slayer: String? = null): String {
+        val item = content.items.getValue(itemId)
+        val name = item.name
+        val variant = ((itemId.value.hashCode() and 0x7fffffff) % 3)
+        val opening = when (source) {
+            Source.ASH -> when (variant) {
+                0 -> "Fortune turns in the ${slayer ?: "ash"}'s wake — half-buried, your hand closes on a $name."
+                1 -> "Luck, for once: amid the drifting ash lies a $name, all but lost."
+                else -> "You almost step past it — a dull gleam in the grey resolves into a $name."
+            }
+            Source.RUBBLE -> when (variant) {
+                0 -> "Your fingers find more than ash in the rubble — a $name."
+                1 -> "Buried where no one thought to look: a $name."
+                else -> "The ruin gives something up at last — a $name."
+            }
+            Source.HAND -> when (variant) {
+                0 -> "It is pressed into your hand: a $name."
+                1 -> "And then it is yours — a $name."
+                else -> "You take it up, scarcely believing your luck — a $name."
+            }
+        }
+        val rare = if (item.tier >= 4) "\n\nThis is no common steel. The dark rarely gives up its best." else ""
+        val mark = if (item.tier >= 3) "✦ " else ""
+        return "$mark$opening ${item.description}$rare"
+    }
 
     private fun tierWord(maxHp: Int): String = when {
         maxHp < 20 -> "frail"
@@ -201,17 +236,21 @@ object Narrator {
         is Event.FleeSucceeded ->
             "You tear yourself away and scramble back.\n\n" + describeRoom(state, content)
 
-        is Event.ItemDropped -> {
-            val monster = content.monsters.getValue(event.monster).name
-            "Among the $monster's ashes: ${content.items.getValue(event.item).name}."
-        }
+        is Event.ItemDropped -> luckyFind(event.item, content, Source.ASH, content.monsters.getValue(event.monster).name)
 
         is Event.ItemFound -> {
             val room = content.rooms.getValue(state.currentRoom)
-            room.searchText ?: "Hidden in the rubble: ${content.items.getValue(event.item).name}."
+            // A deliberate hidden item keeps its authored searchText; otherwise a fortune beat.
+            room.searchText ?: luckyFind(event.item, content, Source.RUBBLE)
         }
 
+        is Event.ItemReceived -> luckyFind(event.item, content, Source.HAND)
+
         is Event.ItemTaken -> "Taken: ${content.items.getValue(event.item).name}."
+
+        is Event.ItemConsumed -> "Given up: ${content.items.getValue(event.item).name}."
+
+        is Event.GoldGained -> "You are ${event.amount} gold richer."
 
         is Event.Equipped -> {
             val def = content.items.getValue(event.item)
@@ -238,6 +277,20 @@ object Narrator {
         is Event.Camped -> {
             val room = content.rooms.getValue(state.currentRoom)
             room.campText ?: "You rest a while in safety; your strength of purpose returns."
+        }
+
+        is Event.EnteredStorylet -> content.storylets.getValue(event.storylet).body
+
+        Event.LeftStorylet -> ""
+
+        is Event.StoryNarration -> event.text
+
+        is Event.FlagSet -> ""
+
+        is Event.CheckResolved -> {
+            val attr = event.attribute.name.lowercase().replaceFirstChar { it.uppercase() }
+            if (event.success) "✦ $attr holds (${event.chancePercent}%) — it works."
+            else "✗ $attr fails you (${event.chancePercent}%)."
         }
 
         Event.GameWon ->

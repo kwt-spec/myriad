@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  * NEW streams appended here — never reorder or remove entries; saves reference them.
  */
 @Serializable
-enum class RngStream { COMBAT, LOOT, WORLDGEN, AMBIENT }
+enum class RngStream { COMBAT, LOOT, WORLDGEN, AMBIENT, STORY }
 
 @Serializable
 data class RngState(val streams: Map<RngStream, Pcg32State>) {

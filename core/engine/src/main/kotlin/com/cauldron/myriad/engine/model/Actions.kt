@@ -54,6 +54,10 @@ sealed interface Action {
     @SerialName("flee")
     data object Flee : Action
 
+    @Serializable
+    @SerialName("choose")
+    data class Choose(val choice: ChoiceId) : Action
+
     /**
      * Meta-actions (progression). Validated by the engine directly, NOT via
      * legalActions — that stays the combat/exploring verb set and the softlock

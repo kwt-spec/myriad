@@ -155,6 +155,40 @@ sealed interface Event {
     @SerialName("camped")
     data class Camped(val restored: Map<MeterId, Int>) : Event
 
+    // ── Storylets (M2) ──────────────────────────────────────────────────────
+    @Serializable
+    @SerialName("entered_story")
+    data class EnteredStorylet(val storylet: StoryletId) : Event
+
+    @Serializable
+    @SerialName("left_story")
+    data object LeftStorylet : Event
+
+    @Serializable
+    @SerialName("flag_set")
+    data class FlagSet(val flag: String, val value: Int) : Event
+
+    @Serializable
+    @SerialName("story_narration")
+    data class StoryNarration(val text: String) : Event
+
+    /** A weapon received straight to hand from a story (a fortunate find). */
+    @Serializable
+    @SerialName("item_received")
+    data class ItemReceived(val item: ItemId) : Event
+
+    @Serializable
+    @SerialName("item_consumed")
+    data class ItemConsumed(val item: ItemId) : Event
+
+    @Serializable
+    @SerialName("gold_gained")
+    data class GoldGained(val amount: Int) : Event
+
+    @Serializable
+    @SerialName("check_resolved")
+    data class CheckResolved(val attribute: com.cauldron.myriad.engine.model.Attribute, val chancePercent: Int, val success: Boolean) : Event
+
     @Serializable
     @SerialName("game_won")
     data object GameWon : Event

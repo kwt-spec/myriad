@@ -20,8 +20,8 @@ data class SaveFile(
  * walk the backup chain (MASTER_PLAN §8).
  */
 object SaveCodec {
-    const val FORMAT_VERSION = 5
-    const val ENGINE_VERSION = "0.5.0"
+    const val FORMAT_VERSION = 6
+    const val ENGINE_VERSION = "0.6.0"
 
     private val MAGIC = byteArrayOf(0x4D, 0x59, 0x52, 0x31) // "MYR1"
     private const val SHA_LEN = 32

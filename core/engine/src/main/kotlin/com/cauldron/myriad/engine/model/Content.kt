@@ -76,6 +76,8 @@ data class RoomDef(
     /** Camp is legal here: restores all meters to cap. */
     val haven: Boolean = false,
     val campText: String? = null,
+    /** A storylet that fires once on first entry (M2). */
+    val storylet: StoryletId? = null,
     val isGoal: Boolean = false,
 )
 
@@ -97,6 +99,7 @@ data class ContentPack(
     val abilities: Map<AbilityId, AbilityDef> = emptyMap(),
     val nodes: Map<NodeId, ConstellationNodeDef> = emptyMap(),
     val senses: Map<SenseId, SenseDef> = emptyMap(),
+    val storylets: Map<StoryletId, StoryletDef> = emptyMap(),
 ) {
     companion object {
         const val GOLD_DROP_CAP = 1_000_000
@@ -120,6 +123,32 @@ data class ContentPack(
             }
             room.hiddenItem?.let {
                 if (it !in items) problems += "room '${room.id.value}': missing item '${it.value}'"
+            }
+            room.storylet?.let {
+                if (it !in storylets) problems += "room '${room.id.value}': missing storylet '${it.value}'"
+            }
+        }
+
+        for (story in storylets.values) {
+            if (story.body.isBlank()) problems += "storylet '${story.id.value}': blank body"
+            if (story.choices.isEmpty()) problems += "storylet '${story.id.value}': no choices"
+            for (choice in story.choices) {
+                if (choice.label.isBlank()) problems += "choice '${choice.id.value}': blank label"
+                choice.check?.let { if (it.difficulty <= 0) problems += "choice '${choice.id.value}': non-positive difficulty" }
+                when (val req = choice.requirement) {
+                    is Requirement.HasItem -> if (req.item !in items) problems += "choice '${choice.id.value}': requires missing item"
+                    is Requirement.HasNode -> if (req.node !in nodes) problems += "choice '${choice.id.value}': requires missing node"
+                    else -> {}
+                }
+                for (effect in choice.success + (choice.failure ?: emptyList())) {
+                    when (effect) {
+                        is OutcomeEffect.GiveItem -> if (effect.item !in items) problems += "choice '${choice.id.value}': gives missing item"
+                        is OutcomeEffect.TakeItem -> if (effect.item !in items) problems += "choice '${choice.id.value}': takes missing item"
+                        is OutcomeEffect.StartCombat -> if (effect.monster !in monsters) problems += "choice '${choice.id.value}': starts combat with missing monster"
+                        is OutcomeEffect.Goto -> if (effect.storylet !in storylets) problems += "choice '${choice.id.value}': goto missing storylet '${effect.storylet.value}'"
+                        else -> {}
+                    }
+                }
             }
         }
 

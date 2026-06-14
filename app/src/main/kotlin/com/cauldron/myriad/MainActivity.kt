@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cauldron.myriad.ui.GameScreen
+import com.cauldron.myriad.ui.InventoryScreen
 import com.cauldron.myriad.ui.MyriadTheme
 import com.cauldron.myriad.ui.SkillsScreen
 import com.cauldron.myriad.ui.TitleScreen
@@ -55,20 +56,25 @@ private fun MyriadRoot(viewModel: GameViewModel) {
             )
 
         is GameViewModel.UiState.Playing ->
-            if (state.showSkills) {
-                SkillsScreen(
+            when {
+                state.showSkills -> SkillsScreen(
                     playing = state,
                     onUnlock = viewModel::unlockNode,
                     onRespec = viewModel::respec,
                     onClose = viewModel::closeSkills,
                 )
-            } else {
-                GameScreen(
+                state.showInventory -> InventoryScreen(
+                    playing = state,
+                    onEquip = viewModel::equip,
+                    onClose = viewModel::closeInventory,
+                )
+                else -> GameScreen(
                     playing = state,
                     content = viewModel.content,
                     onAct = viewModel::act,
                     onNewRun = viewModel::newRun,
                     onOpenSkills = viewModel::openSkills,
+                    onOpenInventory = viewModel::openInventory,
                 )
             }
     }

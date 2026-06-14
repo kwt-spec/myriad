@@ -98,7 +98,7 @@ class HundredfoldTest {
     fun `the depths exist, scale, and end at the First Ember`() {
         val pack = EmberCellar.pack
         assertEquals(100, Hundredfold.FLOORS, "the descent is a hundred floors deep")
-        assertEquals(4 + Hundredfold.generatedRoomCount(), pack.rooms.size, "4 handcrafted + generated depths rooms")
+        assertEquals(4 + CellarStorylets.rooms().size + Hundredfold.generatedRoomCount(), pack.rooms.size, "handcrafted + storylet niches + generated depths rooms")
         assertTrue(pack.rooms.size >= 300, "hundredfold rooms: only ${pack.rooms.size}")
         assertEquals(2 + Bestiary.speciesCount(), pack.monsters.size, "2 handcrafted + the full bestiary")
 

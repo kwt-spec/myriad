@@ -37,10 +37,23 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             val nodes: List<NodeRow> = emptyList(),
             val canRespec: Boolean = false,
             val respecCost: Int = 0,
+            val showInventory: Boolean = false,
+            val inventory: List<InvRow> = emptyList(),
+            val isStory: Boolean = false,
         ) : UiState
     }
 
     data class Chip(val action: Action, val label: String)
+
+    data class InvRow(
+        val item: com.cauldron.myriad.engine.model.ItemId,
+        val name: String,
+        val detail: String,
+        val equipped: Boolean,
+        val equippable: Boolean,
+        val deltaAttack: Int,
+        val deltaDefense: Int,
+    )
 
     enum class NodeStatus { OWNED, AFFORDABLE, LOCKED }
 
@@ -115,6 +128,21 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         (_ui.value as? UiState.Playing)?.let { _ui.value = it.copy(showSkills = false) }
     }
 
+    fun openInventory() {
+        (_ui.value as? UiState.Playing)?.let { _ui.value = it.copy(showInventory = true) }
+    }
+
+    fun closeInventory() {
+        (_ui.value as? UiState.Playing)?.let { _ui.value = it.copy(showInventory = false) }
+    }
+
+    fun equip(item: com.cauldron.myriad.engine.model.ItemId) {
+        val current = (_ui.value as? UiState.Playing) ?: return
+        if (Action.Equip(item) !in engine.legalActions(current.game)) return
+        val result = engine.step(current.game, Action.Equip(item))
+        present(result.state, result.events, showInventory = true)
+    }
+
     fun unlockNode(id: com.cauldron.myriad.engine.model.NodeId) {
         val current = (_ui.value as? UiState.Playing) ?: return
         if (!engine.canUnlock(current.game, id)) return
@@ -129,7 +157,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         present(result.state, result.events, showSkills = true)
     }
 
-    private fun present(game: GameState, events: List<Event> = emptyList(), showSkills: Boolean = false) {
+    private fun present(
+        game: GameState, events: List<Event> = emptyList(),
+        showSkills: Boolean = false, showInventory: Boolean = false,
+    ) {
         _ui.value = UiState.Playing(
             game = game,
             chips = chipsFor(game),
@@ -138,8 +169,36 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             nodes = nodeRows(game),
             canRespec = engine.canRespec(game),
             respecCost = engine.respecCost(game),
+            showInventory = showInventory,
+            inventory = inventoryRows(game),
+            isStory = game.mode is com.cauldron.myriad.engine.model.Mode.Story,
         )
         pendingSave.value = SaveCodec.fresh(game)
+    }
+
+    /** Inventory with ±deltas versus the currently equipped weapon. */
+    private fun inventoryRows(game: GameState): List<InvRow> {
+        val equippedAtk = game.player.equipped?.let { content.items.getValue(it).attackBonus } ?: 0
+        val equippedDef = game.player.equipped?.let { content.items.getValue(it).defenseBonus } ?: 0
+        return game.player.inventory
+            .map { content.items.getValue(it) }
+            .sortedWith(compareByDescending<com.cauldron.myriad.engine.model.ItemDef> { it.attackBonus + it.defenseBonus }.thenBy { it.name })
+            .map { def ->
+                val equipped = game.player.equipped == def.id
+                InvRow(
+                    item = def.id,
+                    name = def.name,
+                    detail = buildString {
+                        if (def.family.isNotEmpty()) append(def.family).append(" · T").append(def.tier).append("  ")
+                        if (def.attackBonus != 0) append("+${def.attackBonus} atk ")
+                        if (def.defenseBonus != 0) append("+${def.defenseBonus} def")
+                    }.trim(),
+                    equipped = equipped,
+                    equippable = def.isEquippable && !equipped,
+                    deltaAttack = def.attackBonus - equippedAtk,
+                    deltaDefense = def.defenseBonus - equippedDef,
+                )
+            }
     }
 
     private fun nodeRows(game: GameState): List<NodeRow> =
@@ -181,6 +240,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     Action.Flee -> "Flee"
                     is Action.UseAbility -> "✦ ${content.abilities.getValue(action.ability).name}"
                     is Action.UseVerb -> if (action.verb == com.cauldron.myriad.engine.model.Verbs.KINDLE) "Kindle" else "Forage"
+                    is Action.Choose -> choiceLabel(game, action.choice)
                     is Action.Move ->
                         content.rooms.getValue(game.currentRoom)
                             .exits.firstOrNull { it.to == action.to }?.label ?: "Go"
@@ -190,6 +250,16 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 },
             )
         }
+
+    private fun choiceLabel(game: GameState, choiceId: com.cauldron.myriad.engine.model.ChoiceId): String {
+        val mode = game.mode as? com.cauldron.myriad.engine.model.Mode.Story ?: return "Continue"
+        val choice = content.storylets.getValue(mode.storylet).choices.firstOrNull { it.id == choiceId } ?: return "Leave"
+        val check = choice.check
+        return when {
+            check != null -> "${choice.label}  (${check.attribute.name.lowercase().replaceFirstChar { it.uppercase() }} · ${engine.checkChance(game, check)}%)"
+            else -> choice.label
+        }
+    }
 
     override fun onCleared() {
         PanicSaver.hook = null

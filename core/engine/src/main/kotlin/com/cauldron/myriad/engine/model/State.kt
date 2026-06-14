@@ -83,6 +83,11 @@ sealed interface Mode {
         }
     }
 
+    /** A tap-a-choice narrative scene (MASTER_PLAN §16.9). */
+    @Serializable
+    @SerialName("story")
+    data class Story(val storylet: StoryletId) : Mode
+
     @Serializable
     @SerialName("dead")
     data object Dead : Mode
@@ -119,6 +124,8 @@ data class GameState(
     val nextFeedId: Long = 0,
     /** Survival meter values; default keeps pre-v3 saves decoding (meterFor seeds reads). */
     val meters: Map<MeterId, Int> = emptyMap(),
+    /** Story qualities/flags (Fallen-London style); default keeps pre-v6 saves decoding. */
+    val flags: Map<String, Int> = emptyMap(),
 ) {
     companion object {
         const val FEED_LIMIT = 500
@@ -138,6 +145,8 @@ fun GameState.roomStateFor(id: RoomId, content: ContentPack): RoomState =
 /** Same tolerance for meters: saves predating a meter read it at its start value. */
 fun GameState.meterFor(id: MeterId, content: ContentPack): Int =
     meters[id] ?: content.meters.getValue(id).start
+
+fun GameState.flag(name: String): Int = flags[name] ?: 0
 
 /** Append narration, assigning monotonic ids and trimming to FEED_LIMIT. */
 fun GameState.appendFeed(entries: List<Pair<FeedKind, String>>): GameState {

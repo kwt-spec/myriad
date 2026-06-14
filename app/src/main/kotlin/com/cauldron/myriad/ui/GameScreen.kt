@@ -64,6 +64,7 @@ fun GameScreen(
     onAct: (Action) -> Unit,
     onNewRun: () -> Unit,
     onOpenSkills: () -> Unit,
+    onOpenInventory: () -> Unit,
 ) {
     val game = playing.game
     val listState = rememberLazyListState()
@@ -95,7 +96,7 @@ fun GameScreen(
         EmberField(Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
-            StatusStrip(game, content, onOpenSkills)
+            StatusStrip(game, content, onOpenSkills, onOpenInventory)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             if (inCombat) {
@@ -123,7 +124,25 @@ fun GameScreen(
 }
 
 @Composable
-private fun StatusStrip(game: GameState, content: ContentPack, onOpenSkills: () -> Unit) {
+private fun StoryChoices(playing: GameViewModel.UiState.Playing, enabled: Boolean, onAct: (Action) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (chip in playing.chips) {
+            FilledTonalButton(
+                onClick = { onAct(chip.action) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+            ) {
+                Text(chip.label, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusStrip(game: GameState, content: ContentPack, onOpenSkills: () -> Unit, onOpenInventory: () -> Unit) {
     val animatedHp by animateIntAsState(game.player.hp, tween(450), label = "hp")
     val animatedGold by animateIntAsState(game.player.gold, tween(450), label = "gold")
     val lowHp = game.player.hp <= game.player.maxHp / 4
@@ -177,6 +196,16 @@ private fun StatusStrip(game: GameState, content: ContentPack, onOpenSkills: () 
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
+        )
+        // Pack — the inventory lives one tap away; the glyph carries the count.
+        Text(
+            text = "▣${game.player.inventory.size}",
+            style = style,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(onClick = onOpenInventory)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
         )
         // Level + skill button — the constellations live one tap away.
         val hasPoints = game.player.skillPoints > 0
@@ -240,7 +269,9 @@ private fun ActionBar(
     onAct: (Action) -> Unit,
     onNewRun: () -> Unit,
 ) {
-    if (playing.chips.isEmpty()) {
+    if (playing.isStory) {
+        StoryChoices(playing, enabled, onAct)
+    } else if (playing.chips.isEmpty()) {
         Column(Modifier.padding(20.dp)) {
             Button(
                 onClick = onNewRun,

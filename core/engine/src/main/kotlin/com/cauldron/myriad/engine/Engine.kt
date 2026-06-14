@@ -14,6 +14,7 @@ import com.cauldron.myriad.engine.model.RoomId
 import com.cauldron.myriad.engine.model.RoomState
 import com.cauldron.myriad.engine.model.MeterId
 import com.cauldron.myriad.engine.model.appendFeed
+import com.cauldron.myriad.engine.model.flag
 import com.cauldron.myriad.engine.model.meterFor
 import com.cauldron.myriad.engine.model.roomStateFor
 import com.cauldron.myriad.engine.rng.Dice
@@ -76,6 +77,7 @@ class Engine(val content: ContentPack) {
      */
     fun legalActions(state: GameState): List<Action> = when (val mode = state.mode) {
         Mode.Dead, Mode.Victory -> emptyList()
+        is Mode.Story -> availableChoices(state, content.storylets.getValue(mode.storylet)).map { Action.Choose(it) }
         is Mode.Combat -> buildList {
             if (mode.playerStamina >= staminaCost(state, STAMINA_QUICK)) add(Action.QuickStrike)
             if (mode.playerStamina >= staminaCost(state, STAMINA_HEAVY)) add(Action.HeavyStrike)
@@ -158,6 +160,7 @@ class Engine(val content: ContentPack) {
             val dest = content.rooms.getValue(action.to)
             val destState = state.roomStateFor(action.to, content)
             val monsterAlive = dest.monster != null && (destState.monsterHp ?: 0) > 0
+            val storyUnseen = dest.storylet != null && state.flag("seen_${dest.storylet!!.value}") == 0
             when {
                 monsterAlive -> {
                     val monsterId = checkNotNull(dest.monster)
@@ -165,9 +168,12 @@ class Engine(val content: ContentPack) {
                     val intent = drawIntent(content.monsters.getValue(monsterId), dice)
                     add(Event.MonsterIntentDrawn(monsterId, intent.id))
                 }
+                storyUnseen -> add(Event.EnteredStorylet(dest.storylet!!))
                 dest.isGoal -> add(Event.GameWon)
             }
         }
+
+        is Action.Choose -> resolveChoice(state, action.choice, dice)
 
         Action.QuickStrike -> resolveCombat(state, dice, CombatChoice.Quick)
         Action.HeavyStrike -> resolveCombat(state, dice, CombatChoice.Heavy)
@@ -204,7 +210,7 @@ class Engine(val content: ContentPack) {
         // and menu meta-actions also do not burn the clock.
         val burnsClock = when (action) {
             Action.Look, Action.Search, is Action.Move, is Action.Take, is Action.Equip -> true
-            else -> false
+            else -> false // combat, menu, and story actions don't burn the world clock
         }
         if (!burnsClock) return emptyList()
 
@@ -582,8 +588,13 @@ class Engine(val content: ContentPack) {
 
         is Event.MovedTo -> state.copy(lastRoom = state.currentRoom, currentRoom = event.room)
 
-        is Event.CombatStarted ->
-            state.copy(mode = Mode.Combat(event.monster, playerStamina = effectiveMaxStamina(state)))
+        is Event.CombatStarted -> {
+            // Seed the foe's HP if the room had none (story-initiated ambush).
+            val seeded = if (state.roomStateFor(state.currentRoom, content).monsterHp == null) {
+                state.updateRoom(state.currentRoom) { it.copy(monsterHp = content.monsters.getValue(event.monster).maxHp) }
+            } else state
+            seeded.copy(mode = Mode.Combat(event.monster, playerStamina = effectiveMaxStamina(seeded)))
+        }
 
         is Event.MonsterIntentDrawn -> {
             val mode = state.mode as? Mode.Combat
@@ -730,6 +741,19 @@ class Engine(val content: ContentPack) {
         is Event.Equipped -> state.copy(player = state.player.copy(equipped = event.item))
 
         Event.GameWon -> state.copy(mode = Mode.Victory)
+
+        // ── Storylets (M2) ──
+        is Event.EnteredStorylet -> state.copy(
+            mode = Mode.Story(event.storylet),
+            flags = state.flags + ("seen_${event.storylet.value}" to 1),
+        )
+        Event.LeftStorylet -> if (state.mode is Mode.Story) state.copy(mode = Mode.Exploring) else state
+        is Event.FlagSet -> state.copy(flags = state.flags + (event.flag to event.value))
+        is Event.StoryNarration -> state
+        is Event.CheckResolved -> state
+        is Event.ItemReceived -> state.copy(player = state.player.copy(inventory = state.player.inventory + event.item))
+        is Event.ItemConsumed -> state.copy(player = state.player.copy(inventory = state.player.inventory - event.item))
+        is Event.GoldGained -> state.copy(player = state.player.copy(gold = addClamped(state.player.gold, event.amount)))
     }
 
     private fun GameState.updateRoom(room: RoomId, transform: (RoomState) -> RoomState): GameState =
@@ -801,6 +825,95 @@ class Engine(val content: ContentPack) {
         state.player.unlockedNodes.mapNotNull {
             (content.nodes[it]?.effect as? com.cauldron.myriad.engine.model.NodeEffect.GrantVerb)?.verb
         }
+
+    // ── Storylets (M2) ───────────────────────────────────────────────────────
+
+    /** A player attribute for skill-checks, derived from stored stats + progression. */
+    fun attribute(state: GameState, attr: com.cauldron.myriad.engine.model.Attribute): Int {
+        val lvl = state.player.level
+        return when (attr) {
+            com.cauldron.myriad.engine.model.Attribute.MIGHT -> playerAttack(state)
+            com.cauldron.myriad.engine.model.Attribute.AGILITY -> lvl + playerDefense(state)
+            com.cauldron.myriad.engine.model.Attribute.CUNNING -> lvl + critBonus(state) / 4
+            com.cauldron.myriad.engine.model.Attribute.PERCEPTION -> lvl + state.player.unlockedNodes.count {
+                content.nodes[it]?.effect is com.cauldron.myriad.engine.model.NodeEffect.GrantSense
+            }
+            com.cauldron.myriad.engine.model.Attribute.RESOLVE -> lvl + damageReduction(state)
+        }
+    }
+
+    /** Visible success chance for a check: 50% at parity, ±8% per point of margin, clamped 5..95. */
+    fun checkChance(state: GameState, check: com.cauldron.myriad.engine.model.SkillCheck): Int =
+        (50 + (attribute(state, check.attribute) - check.difficulty) * 8).coerceIn(5, 95)
+
+    fun requirementMet(state: GameState, req: com.cauldron.myriad.engine.model.Requirement?): Boolean = when (req) {
+        null -> true
+        is com.cauldron.myriad.engine.model.Requirement.FlagAtLeast -> state.flag(req.flag) >= req.value
+        is com.cauldron.myriad.engine.model.Requirement.HasItem -> req.item in state.player.inventory
+        is com.cauldron.myriad.engine.model.Requirement.EquippedFamily ->
+            state.player.equipped?.let { content.items.getValue(it).family == req.family } ?: false
+        is com.cauldron.myriad.engine.model.Requirement.AttributeAtLeast -> attribute(state, req.attribute) >= req.value
+        is com.cauldron.myriad.engine.model.Requirement.HasNode -> req.node in state.player.unlockedNodes
+    }
+
+    private val LEAVE = com.cauldron.myriad.engine.model.ChoiceId("__leave__")
+
+    /** Choices whose requirement is met; never empty (a Leave fallback guarantees the oracle). */
+    fun availableChoices(state: GameState, storylet: com.cauldron.myriad.engine.model.StoryletDef): List<com.cauldron.myriad.engine.model.ChoiceId> {
+        val open = storylet.choices.filter { requirementMet(state, it.requirement) }.map { it.id }
+        return open.ifEmpty { listOf(LEAVE) }
+    }
+
+    private fun resolveChoice(state: GameState, choiceId: com.cauldron.myriad.engine.model.ChoiceId, dice: Dice): List<Event> {
+        if (choiceId == LEAVE) return listOf(Event.LeftStorylet)
+        val storylet = content.storylets.getValue((state.mode as Mode.Story).storylet)
+        val choice = storylet.choices.first { it.id == choiceId }
+        return buildList {
+            val outcome = if (choice.check != null) {
+                val chance = checkChance(state, choice.check!!)
+                val success = dice.roll(RngStream.STORY, 1..100) <= chance
+                add(Event.CheckResolved(choice.check!!.attribute, chance, success))
+                if (success) choice.success else (choice.failure ?: choice.success)
+            } else choice.success
+
+            var transitioned = false
+            var deferredXp = 0L
+            for (effect in outcome) {
+                when (effect) {
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.Narrate -> add(Event.StoryNarration(effect.text))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.SetFlag ->
+                        add(Event.FlagSet(effect.flag, state.flag(effect.flag) + effect.delta))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.GiveItem -> add(Event.ItemReceived(effect.item))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.TakeItem -> add(Event.ItemConsumed(effect.item))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.GainGold -> add(Event.GoldGained(addClamped(0, effect.amount)))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.GainXp -> deferredXp += effect.amount
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.Heal -> add(Event.PlayerHealed(effect.amount))
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.Hurt -> {
+                        val dmg = effect.amount.coerceAtLeast(0)
+                        add(Event.PlayerSelfHarm(dmg))
+                        if (state.player.hp - dmg <= 0) { add(Event.PlayerDied); return@buildList }
+                    }
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.StartCombat -> {
+                        add(Event.CombatStarted(effect.monster))
+                        add(Event.MonsterIntentDrawn(effect.monster, drawIntent(content.monsters.getValue(effect.monster), dice).id))
+                        transitioned = true
+                    }
+                    is com.cauldron.myriad.engine.model.OutcomeEffect.Goto -> { add(Event.EnteredStorylet(effect.storylet)); transitioned = true }
+                    com.cauldron.myriad.engine.model.OutcomeEffect.EndStory -> { add(Event.LeftStorylet); transitioned = true }
+                }
+            }
+            if (deferredXp > 0) {
+                add(Event.XpGained(deferredXp))
+                var total = state.player.xp + deferredXp
+                var level = state.player.level
+                while (level < LEVEL_CAP && total >= xpToReach(level + 1)) {
+                    level++
+                    add(Event.LeveledUp(level, LEVEL_HP_GAIN, LEVEL_ATTACK_GAIN, LEVEL_DEFENSE_GAIN, LEVEL_SKILL_POINTS))
+                }
+            }
+            if (!transitioned) add(Event.LeftStorylet) // a choice always resolves the scene
+        }
+    }
 
     fun unlockedAbilities(state: GameState): List<com.cauldron.myriad.engine.model.AbilityDef> =
         state.player.unlockedNodes.mapNotNull { id ->

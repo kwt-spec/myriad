@@ -37,3 +37,11 @@ value class SenseId(val value: String)
 @Serializable
 @JvmInline
 value class VerbId(val value: String)
+
+@Serializable
+@JvmInline
+value class StoryletId(val value: String)
+
+@Serializable
+@JvmInline
+value class ChoiceId(val value: String)

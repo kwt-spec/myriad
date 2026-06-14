@@ -33,8 +33,8 @@ to grow, not a gate. The descent ends at the **First Ember** capstone on floor 1
 |---|---|
 | Floors | 100 |
 | Generated depths rooms | 370 |
-| Handcrafted rooms | 4 |
-| **Total rooms** | **374** |
+| Handcrafted rooms (incl. 3 storylet niches) | 7 |
+| **Total rooms** | **377** |
 | **Total monsters** (the bestiary + 2 handcrafted) | **842** |
 | Galleries (even floors) | 50 |
 | Shrine-camps (every 5th floor) | 20 |

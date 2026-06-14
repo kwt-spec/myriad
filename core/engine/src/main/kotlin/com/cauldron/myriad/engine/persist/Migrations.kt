@@ -25,12 +25,16 @@ object Migrations {
      *
      * v4 → v5 (status effects): `Mode.Combat` gained `statuses`; defaults to empty,
      * so the stamp suffices.
+     *
+     * v5 → v6 (storylets): `GameState` gained `flags` and a `Mode.Story`; flags
+     * default to empty, so the stamp suffices.
      */
     fun migrate(save: SaveFile): SaveFile = when (save.formatVersion) {
         1 -> migrate(save.copy(formatVersion = 2))
         2 -> migrate(save.copy(formatVersion = 3))
         3 -> migrate(save.copy(formatVersion = 4))
         4 -> migrate(save.copy(formatVersion = 5))
+        5 -> migrate(save.copy(formatVersion = 6))
         SaveCodec.FORMAT_VERSION -> save
         else -> throw SaveCodec.CorruptSaveException(
             "no migration path from save format ${save.formatVersion}"

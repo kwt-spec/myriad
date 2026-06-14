@@ -49,7 +49,7 @@ object EmberCellar {
     private val greatSenses = GreatForge.senses()
 
     val pack = ContentPack(
-        version = "ember-age/0.4",
+        version = "ember-age/0.5",
         intro = "Cold ash sifts down from the beams overhead. You wake on cracked flagstones " +
             "with no memory of the stairs that brought you down — only a seam of dim ember-light " +
             "somewhere above, and the certainty that the dark below is not empty.",
@@ -58,9 +58,12 @@ object EmberCellar {
             ASHEN_CELLAR to RoomDef(
                 id = ASHEN_CELLAR,
                 name = "Ashen Cellar",
-                description = "A vaulted cellar half-buried in grey drifts. Broken casks line the " +
-                    "walls, and something glints beneath the ash.",
-                exits = listOf(ExitDef("North — a root-choked archway", ROOT_PASSAGE)),
+                description = "A vaulted cellar half-buried in grey drifts. Your breath smokes in the " +
+                    "cold; broken casks lean against the walls, and something metal glints beneath the ash.",
+                exits = listOf(
+                    ExitDef("North — a root-choked archway", ROOT_PASSAGE),
+                    ExitDef("A side-niche, faint with someone else's firelight", CellarStorylets.GRAVE_NICHE),
+                ),
                 hiddenItem = RUSTY_SWORD,
                 searchText = "You drag your fingers through the drifts and strike metal: " +
                     "a rusty sword, pitted but still keen enough to bite.",
@@ -76,6 +79,7 @@ object EmberCellar {
                 exits = listOf(
                     ExitDef("South — back to the cellar", ASHEN_CELLAR),
                     ExitDef("East — a collapsed vault, breathing faint light", COLLAPSED_VAULT),
+                    ExitDef("West — a black iron door, sealed shut", CellarStorylets.DOOR_NICHE),
                     ExitDef("North — a stair toward ember-light", CELLAR_STAIR),
                 ),
                 monster = CINDER_RAT,
@@ -89,6 +93,7 @@ object EmberCellar {
                     "descends into a heat you can feel on your face.",
                 exits = listOf(
                     ExitDef("West — back to the passage", ROOT_PASSAGE),
+                    ExitDef("A still nook, oddly warm", CellarStorylets.SHRINE_NOOK),
                     ExitDef("Down — the cracked stair into the Ember Depths", Hundredfold.landingId(1)),
                 ),
                 monster = EMBER_WISP,
@@ -100,7 +105,7 @@ object EmberCellar {
                 exits = listOf(ExitDef("South — down to the passage", ROOT_PASSAGE)),
                 isGoal = true,
             ),
-        ) + Hundredfold.depthsRooms(COLLAPSED_VAULT, hundredfoldItems),
+        ) + Hundredfold.depthsRooms(COLLAPSED_VAULT, hundredfoldItems) + CellarStorylets.rooms(),
         items = mapOf(
             RUSTY_SWORD to ItemDef(
                 id = RUSTY_SWORD,
@@ -171,6 +176,7 @@ object EmberCellar {
                 ),
             ),
         ) + Bestiary.all(hundredfoldItems),
+        storylets = CellarStorylets.storylets(hundredfoldItems),
         meters = mapOf(
             WARMTH to MeterDef(
                 id = WARMTH,

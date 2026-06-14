@@ -126,6 +126,21 @@ class MigrationTest {
     }
 
     @Test
+    fun `v5 fixtures chain to current and play on`() {
+        val exploring = SaveCodec.decode(golden("v5-exploring.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, exploring.formatVersion, "v5 must chain 5->6")
+        assertIs<Mode.Exploring>(exploring.state.mode)
+        assertTrue(exploring.state.flags.isEmpty(), "migrated save has no story flags")
+        engine.step(exploring.state, Action.Look)
+
+        val combat = SaveCodec.decode(golden("v5-combat.myr"))
+        assertEquals(SaveCodec.FORMAT_VERSION, combat.formatVersion)
+        assertIs<Mode.Combat>(combat.state.mode)
+        val finished = fightSmart(engine, combat.state)
+        assertTrue(finished.mode is Mode.Exploring || finished.mode is Mode.Dead)
+    }
+
+    @Test
     fun `v2 saves pass through migration unchanged`() {
         val state = engine.newGame(11, "Hero")
         val save = SaveCodec.fresh(state)
