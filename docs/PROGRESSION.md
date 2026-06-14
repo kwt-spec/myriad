@@ -51,6 +51,14 @@ sentences): **Deathsight** (exact HP), **Foresight** (blow severity), **Aurasigh
 **Forage** and **Kindle** (Craft) restore warmth without a full camp — exploration
 sustain between hearths.
 
+## Scale (the Constellation Forge)
+
+On top of the hand-authored core, `ConstellationForge` generates tiered ability
+families (Strikes I–VII, Heals/LifeStrikes/Routs I–IV) and per-tree stat-rank
+chains, for **~90 abilities** and **~326 nodes** across the five trees — all
+distinct in id/name/prose, all real effects, validated like every content pack.
+(The Great Forge expands this much further — see the constellation count below.)
+
 ## Proven winnable
 
 The Gauntlet `delver` — equips upgrades, levels, builds durability + a heal first

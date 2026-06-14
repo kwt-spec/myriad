@@ -299,6 +299,9 @@ class Engine(val content: ContentPack) {
                     addSlain(state, monsterDef, dice)
                     return@buildList
                 }
+                val steal = (damage.toLong() * lifesteal(state) / 100).toInt()
+                    .coerceAtMost(maxHp - playerHp).coerceAtLeast(0)
+                if (steal > 0) { playerHp += steal; add(Event.PlayerHealed(steal)) }
                 playerGauge = Mode.Combat.GAUGE_MAX - if (heavy) RECOVERY_HEAVY else RECOVERY_QUICK
             }
 
@@ -640,6 +643,9 @@ class Engine(val content: ContentPack) {
 
     fun cooldownReduction(state: GameState): Int =
         nodeSum<com.cauldron.myriad.engine.model.NodeEffect.CooldownReduction>(state) { it.turns }
+
+    fun lifesteal(state: GameState): Int =
+        nodeSum<com.cauldron.myriad.engine.model.NodeEffect.Lifesteal>(state) { it.percent }
 
     /** A strike/ability stamina cost after Mind-tree efficiency. */
     fun staminaCost(state: GameState, base: Int): Int =

@@ -75,6 +75,16 @@ object Narrator {
                 com.cauldron.myriad.engine.model.SenseHint.SPEED_READ ->
                     if (monster.speed > 130) "it is fast — it will act often" else "it is slow — you have time"
                 com.cauldron.myriad.engine.model.SenseHint.SOUL_COUNT -> "its ember will yield ${xpHint(monster)} insight"
+                com.cauldron.myriad.engine.model.SenseHint.DEADLIEST_MOVE -> {
+                    val worst = monster.moves.maxByOrNull { it.powerNum * 100 / it.powerDen }!!
+                    "its deadliest blow is the ${worst.name}"
+                }
+                com.cauldron.myriad.engine.model.SenseHint.READ_GAUGE -> {
+                    val mode = state.mode as? com.cauldron.myriad.engine.model.Mode.Combat
+                    val gauge = mode?.monsterGauge ?: 0
+                    val ticks = ((com.cauldron.myriad.engine.model.Mode.Combat.GAUGE_MAX - gauge) + monster.speed - 1) / monster.speed.coerceAtLeast(1)
+                    "it will act in about $ticks tick${if (ticks == 1) "" else "s"}"
+                }
             }
             "  ${sense.name}: $intel."
         }

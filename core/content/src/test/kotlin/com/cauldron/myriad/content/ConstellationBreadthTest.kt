@@ -23,15 +23,15 @@ class ConstellationBreadthTest {
     fun `all five constellations are present and deep`() {
         val byTree = pack.nodes.values.groupingBy { it.constellation }.eachCount()
         for (tree in listOf("Body", "Mind", "Senses", "Craft", "Voice")) {
-            assertTrue((byTree[tree] ?: 0) >= 9, "$tree shallow: ${byTree[tree]}")
+            assertTrue((byTree[tree] ?: 0) >= 40, "$tree shallow: ${byTree[tree]}")
         }
-        assertTrue(pack.nodes.size >= Constellations.NODE_FLOOR, "node floor: ${pack.nodes.size} < ${Constellations.NODE_FLOOR}")
+        assertTrue(pack.nodes.size >= ConstellationForge.NODE_FLOOR, "node floor: ${pack.nodes.size} < ${ConstellationForge.NODE_FLOOR}")
     }
 
     @Test
     fun `the ability and sense rosters are broad`() {
-        assertTrue(pack.abilities.size >= 12, "abilities: ${pack.abilities.size}")
-        assertTrue(pack.senses.size >= 6, "senses: ${pack.senses.size}")
+        assertTrue(pack.abilities.size >= ConstellationForge.ABILITY_FLOOR, "abilities: ${pack.abilities.size}")
+        assertTrue(pack.senses.size >= 8, "senses: ${pack.senses.size}")
         // Every ability kind is represented.
         val kinds = pack.abilities.values.map { it.kind::class }.toSet()
         assertEquals(4, kinds.size, "all four ability kinds should appear, saw $kinds")
@@ -44,8 +44,8 @@ class ConstellationBreadthTest {
             NodeEffect.MaxHp::class, NodeEffect.Attack::class, NodeEffect.Defense::class.let { NodeEffect.DamageReduction::class },
             NodeEffect.MaxStamina::class, NodeEffect.Crit::class, NodeEffect.DamageReduction::class,
             NodeEffect.XpBonus::class, NodeEffect.GoldFind::class, NodeEffect.StaminaEfficiency::class,
-            NodeEffect.CooldownReduction::class, NodeEffect.GrantAbility::class, NodeEffect.GrantSense::class,
-            NodeEffect.GrantVerb::class,
+            NodeEffect.CooldownReduction::class, NodeEffect.Lifesteal::class, NodeEffect.GrantAbility::class,
+            NodeEffect.GrantSense::class, NodeEffect.GrantVerb::class,
         ).toSet()
         for (cls in expected) assertTrue(cls in used, "effect class $cls is never used")
     }

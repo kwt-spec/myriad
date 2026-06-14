@@ -24,7 +24,7 @@ import com.cauldron.myriad.engine.model.Verbs
  */
 object Constellations {
 
-    const val NODE_FLOOR = 60
+    const val NODE_FLOOR = 100
 
     // ── Senses (the perception layer) ────────────────────────────────────────
     val senses: Map<SenseId, SenseDef> = listOf(
@@ -34,6 +34,8 @@ object Constellations {
         SenseDef(Senses.GREEDSENSE, "Greedsense", "Smell whether a kill is worth making.", SenseHint.LOOT_SCENT),
         SenseDef(Senses.TREMORSENSE, "Tremorsense", "Judge a foe's quickness by the air it moves.", SenseHint.SPEED_READ),
         SenseDef(Senses.SOULSIGHT, "Soulsight", "Weigh the insight a death will yield.", SenseHint.SOUL_COUNT),
+        SenseDef(Senses.DOOMSIGHT, "Doomsight", "Know which of a foe's blows is the one to fear.", SenseHint.DEADLIEST_MOVE),
+        SenseDef(Senses.VIGILANCE, "Vigilance", "Count the heartbeats until a foe next moves.", SenseHint.READ_GAUGE),
     ).associateBy { it.id }
 
     // ── Abilities ─────────────────────────────────────────────────────────────
@@ -51,6 +53,18 @@ object Constellations {
     val RALLY_CRY = AbilityId("rally_cry")
     val WAR_CHANT = AbilityId("war_chant")
     val EXECUTE = AbilityId("execute")
+    val RIPOSTE = AbilityId("riposte")
+    val WHIRLWIND = AbilityId("whirlwind")
+    val EMBER_LANCE = AbilityId("ember_lance")
+    val SIPHON = AbilityId("siphon")
+    val DEVOUR = AbilityId("devour")
+    val SECOND_SKIN = AbilityId("second_skin")
+    val MEDITATE = AbilityId("meditate")
+    val TERRIFY = AbilityId("terrify")
+    val BANISH = AbilityId("banish")
+    val SHATTER = AbilityId("shatter")
+    val LAST_STAND = AbilityId("last_stand")
+    val HEARTSEEKER = AbilityId("heartseeker")
 
     val abilities: Map<AbilityId, AbilityDef> = listOf(
         AbilityDef(SUNDER, "Sunder", "A guard-breaking blow that ignores much of the foe's armour.", 35, 2,
@@ -81,6 +95,30 @@ object Constellations {
             AbilityKind.Strike(19, 10, defenseIgnored = 2, critBonus = 20)),
         AbilityDef(EXECUTE, "Execute", "End a faltering thing before it recovers.", 50, 4,
             AbilityKind.Strike(34, 10, defenseIgnored = 10, critBonus = 20)),
+        AbilityDef(RIPOSTE, "Riposte", "A fast counter that punishes an opening.", 22, 1,
+            AbilityKind.Strike(13, 10, defenseIgnored = 2, critBonus = 30)),
+        AbilityDef(WHIRLWIND, "Whirlwind", "A wide, reckless arc that catches everything close.", 45, 3,
+            AbilityKind.Strike(24, 10, defenseIgnored = 0, critBonus = 5)),
+        AbilityDef(EMBER_LANCE, "Ember Lance", "A spear of fire driven clean through.", 48, 3,
+            AbilityKind.Strike(26, 10, defenseIgnored = 14, critBonus = 10)),
+        AbilityDef(SIPHON, "Siphon", "Bleed warmth from the foe into your own veins.", 38, 3,
+            AbilityKind.LifeStrike(15, 10, healPercent = 70)),
+        AbilityDef(DEVOUR, "Devour", "Take the dying thing's heat for your own.", 52, 4,
+            AbilityKind.LifeStrike(22, 10, healPercent = 60)),
+        AbilityDef(SECOND_SKIN, "Second Skin", "Wrap yourself in a moment's mended flesh.", 30, 3,
+            AbilityKind.Heal(25, 100)),
+        AbilityDef(MEDITATE, "Meditate", "Steal a breath of stillness; the pain recedes.", 20, 3,
+            AbilityKind.Heal(18, 100)),
+        AbilityDef(TERRIFY, "Terrify", "A look that unmakes a lesser thing's courage.", 28, 3,
+            AbilityKind.Rout(45)),
+        AbilityDef(BANISH, "Banish", "Name the dark and command it gone.", 60, 5,
+            AbilityKind.Rout(75)),
+        AbilityDef(SHATTER, "Shatter", "A blow aimed at whatever holds the thing together.", 50, 3,
+            AbilityKind.Strike(28, 10, defenseIgnored = 16, critBonus = 10)),
+        AbilityDef(LAST_STAND, "Last Stand", "Refuse to fall; pour everything into one heal.", 60, 5,
+            AbilityKind.Heal(60, 100)),
+        AbilityDef(HEARTSEEKER, "Heartseeker", "One strike, aimed where it ends things.", 40, 3,
+            AbilityKind.Strike(20, 10, defenseIgnored = 4, critBonus = 50)),
     ).associateBy { it.id }
 
     // ── Node generation ──────────────────────────────────────────────────────
@@ -176,6 +214,72 @@ object Constellations {
         node("voice_inspire", "Inspire", "You narrate your own legend, and learn from it. +15% experience.", "Voice", 2, listOf(presence), NodeEffect.XpBonus(15))
         node("voice_commanding", "Commanding", "A voice that expects to be obeyed. +12% critical chance.", "Voice", 2, listOf(presence), NodeEffect.Crit(12))
         node("voice_warlord", "Warlord", "They follow the loudest certainty in the dark. +20 max HP.", "Voice", 3, listOf(presence), NodeEffect.MaxHp(20))
+
+        // ════ DEEPER BRANCHES (the second expansion) ════
+        val bloodiedEdge = NodeId("body_bloodied_edge")
+        val butcher = NodeId("craft_butcher")
+
+        // BODY — heavier flesh, blood, and bigger martial arts.
+        node("body_juggernaut", "Juggernaut", "You become a thing the dark must reckon with. +25 max HP.", "Body", 3, listOf(NodeId("body_unbroken")), NodeEffect.MaxHp(25))
+        val stone = chain("Body", "stoneskin", "Stoneskin", listOf(1, 2), listOf(2, 3), iron,
+            { _, v -> "Your skin remembers the forge and refuses the blow. −$v more damage taken." }, { NodeEffect.DamageReduction(it) })
+        chain("Body", "crush", "Crushing Blows", listOf(3, 4), listOf(2, 3), brute,
+            { _, v -> "Bone gives where you land. +$v attack." }, { NodeEffect.Attack(it) })
+        val thirst = chain("Body", "bloodthirst", "Bloodthirst", listOf(6, 10), listOf(2, 3), brute,
+            { _, v -> "The fight feeds you. Heal $v% of the damage your blows deal." }, { NodeEffect.Lifesteal(it) })
+        node("body_whirlwind", "Whirlwind", "Learn the wide reckless arc.", "Body", 3, listOf(brute), NodeEffect.GrantAbility(WHIRLWIND))
+        node("body_shatter", "Shatter", "Strike at whatever holds a thing together.", "Body", 3, listOf(stone), NodeEffect.GrantAbility(SHATTER))
+        node("body_heartseeker", "Heartseeker", "One strike, aimed to end things.", "Body", 3, listOf(bloodiedEdge), NodeEffect.GrantAbility(HEARTSEEKER))
+        node("body_last_stand", "Last Stand", "Refuse to fall when everything says you should.", "Body", 3, listOf(NodeId("body_juggernaut")), NodeEffect.GrantAbility(LAST_STAND))
+        node("body_titan", "Titan", "The deep has no word for what you have become. +35 max HP.", "Body", 3, listOf(thirst), NodeEffect.MaxHp(35))
+
+        // MIND — sharper thought, faster tricks.
+        val genius = chain("Mind", "genius", "Genius", listOf(20, 30), listOf(2, 3), study,
+            { _, v -> "Insight compounds on insight. +$v% experience." }, { NodeEffect.XpBonus(it) })
+        chain("Mind", "frugal", "Frugality", listOf(8, 12), listOf(2, 3), economy,
+            { _, v -> "You spend yourself like a miser. −$v% stamina cost." }, { NodeEffect.StaminaEfficiency(it) })
+        node("mind_haste", "Haste", "Thought outruns the body's tiredness. −1 ability cooldown.", "Mind", 3, listOf(NodeId("mind_focus")), NodeEffect.CooldownReduction(1))
+        node("mind_keen_focus_2", "Keen Focus II", "The angle is always there if you look. +12% critical chance.", "Mind", 3, listOf(NodeId("mind_keen_focus")), NodeEffect.Crit(12))
+        node("mind_endurance", "Endurance", "A trained mind tires last of all. +35 max stamina.", "Mind", 2, listOf(economy), NodeEffect.MaxStamina(35))
+        node("mind_riposte", "Riposte", "Read the opening and punish it.", "Mind", 2, listOf(economy), NodeEffect.GrantAbility(RIPOSTE))
+        node("mind_meditate", "Meditate", "Find stillness even here, and mend.", "Mind", 2, listOf(study), NodeEffect.GrantAbility(MEDITATE))
+        node("mind_clarity", "Clarity", "Nothing wasted, nothing forgotten. +20% experience.", "Mind", 3, listOf(genius), NodeEffect.XpBonus(20))
+        node("mind_sharp_wits", "Sharp Wits", "A mind honed to a point. +10% critical chance.", "Mind", 2, listOf(NodeId("mind_keen_focus")), NodeEffect.Crit(10))
+
+        // SENSES — the full perception layer and opportunist arts.
+        node("senses_doomsight", "Doomsight", "Learn to fear the right blow.", "Senses", 2, listOf(fore), NodeEffect.GrantSense(Senses.DOOMSIGHT))
+        node("senses_vigilance", "Vigilance", "Count a foe's heartbeats to its next move.", "Senses", 2, listOf(NodeId("senses_tremorsense")), NodeEffect.GrantSense(Senses.VIGILANCE))
+        val eagle = chain("Senses", "eagle_eye", "Eagle Eye", listOf(10, 14), listOf(2, 3), edge,
+            { _, v -> "The fight slows because you see all of it. +$v% critical chance." }, { NodeEffect.Crit(it) })
+        node("senses_evasion_2", "Evasion II", "Seen early, a blow is half avoided. −2 more damage taken.", "Senses", 3, listOf(NodeId("senses_evasion")), NodeEffect.DamageReduction(2))
+        node("senses_ember_lance", "Ember Lance", "Drive a spear of fire through the seam you see.", "Senses", 3, listOf(eagle), NodeEffect.GrantAbility(EMBER_LANCE))
+        node("senses_patience", "Hunter's Patience", "You wait for the only moment that matters. −1 damage taken.", "Senses", 2, listOf(fore), NodeEffect.DamageReduction(1))
+        node("senses_read_room", "Read the Room", "Every detail teaches. +12% experience.", "Senses", 2, listOf(NodeId("senses_greedsense")), NodeEffect.XpBonus(12))
+        node("senses_instinct", "Killing Instinct", "Your eye and edge are one. +12% critical chance.", "Senses", 3, listOf(eagle), NodeEffect.Crit(12))
+
+        // CRAFT — wealth, blood-craft, and the maker's tricks.
+        chain("Craft", "treasure", "Treasure Sense", listOf(20, 35), listOf(2, 3), greed,
+            { _, v -> "The good caches sing to you. +$v% gold found." }, { NodeEffect.GoldFind(it) })
+        chain("Craft", "sanguine", "Sanguine Craft", listOf(8, 12), listOf(2, 3), butcher,
+            { _, v -> "You render the kill into your own strength. Heal $v% of damage dealt." }, { NodeEffect.Lifesteal(it) })
+        node("craft_toughness_2", "Field Toughness II", "Scar tissue over scar tissue. +18 max HP.", "Craft", 2, listOf(NodeId("craft_toughness")), NodeEffect.MaxHp(18))
+        node("craft_butcher_2", "Butcher II", "You have done this a thousand times. +3 attack.", "Craft", 2, listOf(butcher), NodeEffect.Attack(3))
+        node("craft_siphon", "Siphon", "Bleed a foe's warmth straight into your veins.", "Craft", 3, listOf(NodeId("craft_sanguine_1")), NodeEffect.GrantAbility(SIPHON))
+        node("craft_devour", "Devour", "Take the dying thing's heat entirely.", "Craft", 3, listOf(NodeId("craft_siphon")), NodeEffect.GrantAbility(DEVOUR))
+        node("craft_lucky", "Lucky Find", "Fortune favours the thorough. +20% gold found.", "Craft", 2, listOf(greed), NodeEffect.GoldFind(20))
+        node("craft_tinker", "Tinker", "You keep your tools — and tricks — ready. −1 ability cooldown.", "Craft", 3, listOf(NodeId("craft_efficiency")), NodeEffect.CooldownReduction(1))
+
+        // VOICE — command over the self and the dark.
+        chain("Voice", "command", "Command", listOf(3, 4), listOf(2, 3), presence,
+            { _, v -> "The dark itself seems to wait on your word. +$v attack." }, { NodeEffect.Attack(it) })
+        node("voice_terrify", "Terrify", "Unmake a lesser thing's courage with a look.", "Voice", 2, listOf(intimidateN), NodeEffect.GrantAbility(TERRIFY))
+        node("voice_banish", "Banish", "Name the dark and command it gone.", "Voice", 3, listOf(NodeId("voice_dread_howl")), NodeEffect.GrantAbility(BANISH))
+        node("voice_second_skin", "Second Skin", "Speak your wounds shut for a moment.", "Voice", 2, listOf(NodeId("voice_rally")), NodeEffect.GrantAbility(SECOND_SKIN))
+        node("voice_inspire_2", "Inspire II", "Your legend grows in the telling. +20% experience.", "Voice", 3, listOf(NodeId("voice_inspire")), NodeEffect.XpBonus(20))
+        node("voice_commanding_2", "Commanding II", "None mistake your meaning. +12% critical chance.", "Voice", 3, listOf(NodeId("voice_commanding")), NodeEffect.Crit(12))
+        node("voice_iron_will", "Iron Will", "You decide what the dark does to you. −2 damage taken.", "Voice", 3, listOf(NodeId("voice_unflinching")), NodeEffect.DamageReduction(2))
+        node("voice_booming", "Booming Voice", "A voice that fills the deepest hall. +30 max stamina.", "Voice", 2, listOf(presence), NodeEffect.MaxStamina(30))
+        node("voice_legend", "Living Legend", "You are a story the dark already knows to fear. +25 max HP.", "Voice", 3, listOf(NodeId("voice_warlord")), NodeEffect.MaxHp(25))
 
         return acc
     }

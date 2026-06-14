@@ -43,6 +43,9 @@ object EmberCellar {
     private val hundredfoldItems: Map<ItemId, ItemDef> =
         Hundredfold.weapons() + (Hundredfold.FIRST_EMBER to Hundredfold.capstone())
 
+    /** The Constellation Forge: generated tiered abilities (declared before pack). */
+    private val forgedAbilities = ConstellationForge.abilities()
+
     val pack = ContentPack(
         version = "ember-age/0.4",
         intro = "Cold ash sifts down from the beams overhead. You wake on cracked flagstones " +
@@ -180,8 +183,8 @@ object EmberCellar {
                 emptyDamagePerAction = 2,
             ),
         ),
-        abilities = Constellations.abilities,
-        nodes = Constellations.nodes,
+        abilities = Constellations.abilities + forgedAbilities,
+        nodes = Constellations.nodes + ConstellationForge.nodes(forgedAbilities),
         senses = Constellations.senses,
     )
 }

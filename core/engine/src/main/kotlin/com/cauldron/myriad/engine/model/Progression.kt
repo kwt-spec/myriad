@@ -16,10 +16,12 @@ object Senses {
     val GREEDSENSE = SenseId("greedsense")
     val TREMORSENSE = SenseId("tremorsense")
     val SOULSIGHT = SenseId("soulsight")
+    val DOOMSIGHT = SenseId("doomsight")
+    val VIGILANCE = SenseId("vigilance")
 }
 
 /** What a sense reveals in combat narration — rendered generically by the Narrator. */
-enum class SenseHint { EXACT_HP, DAMAGE_FORECAST, WEAKNESS, LOOT_SCENT, SPEED_READ, SOUL_COUNT }
+enum class SenseHint { EXACT_HP, DAMAGE_FORECAST, WEAKNESS, LOOT_SCENT, SPEED_READ, SOUL_COUNT, DEADLIEST_MOVE, READ_GAUGE }
 
 data class SenseDef(
     val id: SenseId,
@@ -70,6 +72,7 @@ sealed interface NodeEffect {
     data class GoldFind(val percent: Int) : NodeEffect
     data class StaminaEfficiency(val percent: Int) : NodeEffect
     data class CooldownReduction(val turns: Int) : NodeEffect
+    data class Lifesteal(val percent: Int) : NodeEffect
     data class GrantAbility(val ability: AbilityId) : NodeEffect
     data class GrantSense(val sense: SenseId) : NodeEffect
     data class GrantVerb(val verb: VerbId) : NodeEffect
